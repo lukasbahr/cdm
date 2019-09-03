@@ -12,6 +12,7 @@ import models.lib.utils as utils
 import models.lib.dataset as dataset
 
 import models.ffjord.train_cnf as train_cnf
+import models.snf.train_snf as train_snf
 
 
 # ============================================================================
@@ -200,4 +201,4 @@ if __name__ == "__main__":
     if args.model == "ffjord":
         train_cnf.run(args, logger, train_loader, test_loader, data_shape)
     elif args.model == "snf":
-        print("hallo")
+        train_snf.run(args, logger, train_loader, test_loader, data_shape)

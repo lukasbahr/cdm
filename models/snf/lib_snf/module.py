@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import lib.flow as flows
+import models.snf.lib_snf.flow as flows
 from torch.autograd import Variable
 
 class Identity(nn.Module):
@@ -521,15 +520,15 @@ class VectorModel(nn.Module):
         super(VectorModel, self).__init__()
 
         self.fc1 = nn.Linear(2 * 32 * 32, 800)
-        self.fc2 = nn.Linear(800,400)
+        self.fc2 = nn.Linear(8000,400)
         self.fc3 = nn.Linear(400,100)
         self.fc4 = nn.Linear(100,2)
 
     def forward(self, x):
-        out = F.relu(self.fc1(x))
-        out = F.relu(self.fc2(out))
-        out = F.relu(self.fc3(out))
-        out = self.fc4(out)
+        x = nn.ReLU(self.fc1(x))
+        x = nn.ReLU(self.fc2(x))
+        x = nn.ReLU(self.fc3(x))
+        x = self.fc4(x)
 
-        return out
+        return x
 
