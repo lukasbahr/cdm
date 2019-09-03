@@ -111,8 +111,12 @@ elif args.model == "snf" and args.save == None:
     args.save = "experiments/snf"
 
 # logger
-utils.makedirs(args.save)
-logger = utils.get_logger(logpath=os.path.join(args.save, 'logs'), filepath=os.path.abspath(__file__))
+try:
+    utils.makedirs(args.save)
+    logger = utils.get_logger(logpath=os.path.join(args.save, 'logs'), filepath=os.path.abspath(__file__))
+except:
+    print("Please choose --model [ffjord, snf]")
+    raise
 
 if args.layer_type == "blend":
     logger.info("!! Setting time_length from None to 1.0 due to use of Blend layers.")
@@ -160,8 +164,8 @@ def get_dataset(args):
     elif args.data == "piv":
         im_dim = 2
         im_size = 32 if args.imagesize is None else args.imagesize
-        train_set = dataset.H5Dataset('/home/bahr/cdm/data/ISPIV_dataset/Batch_Training-Dataset_2Labels_S12_SynthImg_Alex.hdf5')
-        test_set = dataset.H5Dataset('/home/bahr/cdm/data/ISPIV_dataset/Batch_Validation-Dataset_2Labels_S12_SynthImg_Alex.hdf5')
+        train_set = dataset.H5Dataset("/home/bahr/cdm/data/ISPIV_dataset/Batch_Training-Dataset_2Labels_S12_SynthImg_Alex.hdf5")
+        test_set = dataset.H5Dataset("/home/bahr/cdm/data/ISPIV_dataset/Batch_Validation-Dataset_2Labels_S12_SynthImg_Alex.hdf5")
     elif args.data == "cifar10":
         im_dim = 3
         im_size = 32 if args.imagesize is None else args.imagesize
@@ -189,14 +193,11 @@ def get_dataset(args):
 # Main
 # ============================================================================
 if __name__ == "__main__":
-    logger.info(args)
 
     train_set, test_loader, data_shape = get_dataset(args)
     train_loader = get_train_loader(train_set, args.num_epochs)
 
-    if args.model == 'ffjord':
+    if args.model == "ffjord":
         train_cnf.run(args, logger, train_loader, test_loader, data_shape)
-    elif args.model == 'snf':
-        print('hallo')
-    else:
-        print('Please choose between --model [ffjord, snf]')
+    elif args.model == "snf":
+        print("hallo")
