@@ -175,14 +175,7 @@ def run(args, logger, train_loader, test_loader, data_shape):
     itr = 0
     for epoch in range(args.begin_epoch, args.num_epochs + 1):
         model.train()
-        break_training = 40
         for idx_count, (data) in enumerate(train_loader):
-
-            if idx_count > break_training:
-                break
-
-            if idx_count%20==0:
-                print(idx_count)
 
             if args.data == 'piv':
                 x, y = data['ComImages'],data['AllGenDetails']
