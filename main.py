@@ -24,12 +24,19 @@ parser = argparse.ArgumentParser("Continuous Depth Models")
 parser.add_argument("--model", choices=["ffjord", "snf"], type=str)
 parser.add_argument("--data", choices=["piv","mnist", "cifar10"], type=str, default="mnist")
 
-parser.add_argument("--evaluation", type=bool, default=False)
 parser.add_argument("--num_epochs", type=int, default=1000)
 parser.add_argument("--batch_size", type=int, default=100)
 parser.add_argument("--batch_size_schedule", type=str, default="", help="Increases the batchsize at every given epoch, dash separated.")
 parser.add_argument("--test_batch_size", type=int, default=200)
 parser.add_argument("--lr", type=float, default=1e-3)
+
+# ============================================================================
+# Arguments evaluation
+# ============================================================================
+parser.add_argument("--evaluation_numerical", type=bool, default=False)
+parser.add_argument("--save_recon_images_size", type=int, default=8)
+parser.add_argument("--experiment_name", type=str, default=None)
+parser.add_argument("--save", type=str, default=None)
 
 # ============================================================================
 # Arguments for ffjord
@@ -89,7 +96,6 @@ parser.add_argument("--max_grad_norm", type=float, default=1e10,
 
 parser.add_argument("--begin_epoch", type=int, default=1)
 parser.add_argument("--resume", type=str, default=None)
-parser.add_argument("--save", type=str, default=None)
 parser.add_argument("--val_freq", type=int, default=1)
 parser.add_argument("--log_freq", type=int, default=10)
 
@@ -100,9 +106,6 @@ parser.add_argument('--z_size', type=int, default=64, metavar='ZSIZE', help='how
 parser.add_argument('--num_flows', type=int, default=4,metavar='NUM_FLOWS', help='Number of flow layers, ignored in absence of flows')
 parser.add_argument('--num_householder', type=int, default=8, metavar='NUM_HOUSEHOLDERS',help=""" For Householder Sylvester flow: Number of Householder matrices per flow. Ignored for other flow types.""")
 
-#  parser.add_argument('--input_size', type=int, default=[2,32,32],metavar='INPUTSIZE', help='how many stochastic hidden units')
-#  parser.add_argument('-bs', '--batch_size', type=int, default=100, metavar='BATCH_SIZE', help='input batch size for training (default: 100)')
-#  parser.add_argument('-e', '--epochs', type=int, default=2000, metavar='EPOCHS', help='number of epochs to train (default: 2000)')
 
 args = parser.parse_args()
 
@@ -110,6 +113,14 @@ if args.model == "ffjord" and args.save == None:
     args.save = "experiments/ffjord"
 elif args.model == "snf" and args.save == None:
     args.save = "experiments/snf"
+
+if args.data == "piv" and args.experiment_name == None:
+    args.experiment_name = "piv"
+elif args.data == "mnist" and args.experiment_name == None:
+    args.experiment_name = "mnist"
+elif args.data == "cifar10" and args.experiment_name == None:
+    args.experiment_name = "cifar10"
+
 
 # logger
 try:

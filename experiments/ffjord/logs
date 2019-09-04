@@ -4016,3 +4016,1592 @@ SequentialFlow(
 Number of trainable parameters: 18003
 Iter 0000 | Time 0.3342(0.3342) | Bit/dim 9.3218(9.3218) | Steps 41(41.00) | Grad Norm 4.6316(4.6316) | Total Time 1.00(1.00)
 Iter 0010 | Time 0.1319(0.2816) | Bit/dim 9.3010(9.3190) | Steps 41(41.00) | Grad Norm 4.6273(4.6276) | Total Time 1.00(1.00)
+/home/bahr/cdm/main.py
+#!/usr/bin/env python3
+import argparse
+import os
+import time
+import numpy as np
+
+import torch
+import torchvision.datasets as dset
+import torchvision.transforms as tforms
+
+import lib.utils as utils
+import lib.dataset as dataset
+
+import models.train_cnf as train_cnf
+import models.train_snf as train_snf
+
+
+# ============================================================================
+# Arguments general
+# ============================================================================
+torch.backends.cudnn.benchmark = True
+parser = argparse.ArgumentParser("Continuous Depth Models")
+
+parser.add_argument("--model", choices=["ffjord", "snf"], type=str)
+parser.add_argument("--data", choices=["piv","mnist", "cifar10"], type=str, default="mnist")
+
+parser.add_argument("--evaluation", type=bool, default=False)
+parser.add_argument("--num_epochs", type=int, default=1000)
+parser.add_argument("--batch_size", type=int, default=100)
+parser.add_argument("--batch_size_schedule", type=str, default="", help="Increases the batchsize at every given epoch, dash separated.")
+parser.add_argument("--test_batch_size", type=int, default=200)
+parser.add_argument("--lr", type=float, default=1e-3)
+
+# ============================================================================
+# Arguments evaluation
+# ============================================================================
+parser.add_argument("--save_recon_images_size", type=int, default=8)
+parser.add_argument("--experiment_name", type=str, default=None)
+parser.add_argument("--save", type=str, default=None)
+
+# ============================================================================
+# Arguments for ffjord
+# ============================================================================
+SOLVERS = ["dopri5", "bdf", "rk4", "midpoint", 'adams', 'explicit_adams']
+parser.add_argument("--dims", type=str, default="8,32,32,8")
+parser.add_argument("--strides", type=str, default="2,2,1,-2,-2")
+parser.add_argument("--num_blocks", type=int, default=1, help='Number of stacked CNFs.')
+
+parser.add_argument("--conv", type=eval, default=True, choices=[True, False])
+parser.add_argument(
+    "--layer_type", type=str, default="ignore",
+    choices=["ignore", "concat", "concat_v2", "squash", "concatsquash", "concatcoord", "hyper", "blend"]
+)
+parser.add_argument("--divergence_fn", type=str, default="approximate", choices=["brute_force", "approximate"])
+parser.add_argument(
+    "--nonlinearity", type=str, default="softplus", choices=["tanh", "relu", "softplus", "elu", "swish"]
+)
+parser.add_argument('--solver', type=str, default='dopri5', choices=SOLVERS)
+parser.add_argument('--atol', type=float, default=1e-5)
+parser.add_argument('--rtol', type=float, default=1e-5)
+parser.add_argument("--step_size", type=float, default=None, help="Optional fixed step size.")
+
+parser.add_argument('--test_solver', type=str, default=None, choices=SOLVERS + [None])
+parser.add_argument('--test_atol', type=float, default=None)
+parser.add_argument('--test_rtol', type=float, default=None)
+
+parser.add_argument("--imagesize", type=int, default=None)
+parser.add_argument("--alpha", type=float, default=1e-6)
+parser.add_argument('--time_length', type=float, default=1.0)
+parser.add_argument('--train_T', type=eval, default=True)
+
+parser.add_argument("--warmup_iters", type=float, default=1000)
+parser.add_argument("--weight_decay", type=float, default=0.0)
+parser.add_argument("--spectral_norm_niter", type=int, default=10)
+
+parser.add_argument("--add_noise", type=eval, default=True, choices=[True, False])
+parser.add_argument("--batch_norm", type=eval, default=False, choices=[True, False])
+parser.add_argument('--residual', type=eval, default=False, choices=[True, False])
+parser.add_argument('--autoencode', type=eval, default=False, choices=[True, False])
+parser.add_argument('--rademacher', type=eval, default=True, choices=[True, False])
+parser.add_argument('--spectral_norm', type=eval, default=False, choices=[True, False])
+parser.add_argument('--multiscale', type=eval, default=False, choices=[True, False])
+parser.add_argument('--parallel', type=eval, default=False, choices=[True, False])
+
+# Regularizations
+parser.add_argument('--l1int', type=float, default=None, help="int_t ||f||_1")
+parser.add_argument('--l2int', type=float, default=None, help="int_t ||f||_2")
+parser.add_argument('--dl2int', type=float, default=None, help="int_t ||f^T df/dt||_2")
+parser.add_argument('--JFrobint', type=float, default=None, help="int_t ||df/dx||_F")
+parser.add_argument('--JdiagFrobint', type=float, default=None, help="int_t ||df_i/dx_i||_F")
+parser.add_argument('--JoffdiagFrobint', type=float, default=None, help="int_t ||df/dx - df_i/dx_i||_F")
+
+parser.add_argument("--time_penalty", type=float, default=0, help="Regularization on the end_time.")
+parser.add_argument("--max_grad_norm", type=float, default=1e10,
+    help="Max norm of graidents (default is just stupidly high to avoid any clipping)")
+
+parser.add_argument("--begin_epoch", type=int, default=1)
+parser.add_argument("--resume", type=str, default=None)
+parser.add_argument("--val_freq", type=int, default=1)
+parser.add_argument("--log_freq", type=int, default=10)
+
+# ============================================================================
+# Arguments for snf
+# ============================================================================
+parser.add_argument('--z_size', type=int, default=64, metavar='ZSIZE', help='how many stochastic hidden units')
+parser.add_argument('--num_flows', type=int, default=4,metavar='NUM_FLOWS', help='Number of flow layers, ignored in absence of flows')
+parser.add_argument('--num_householder', type=int, default=8, metavar='NUM_HOUSEHOLDERS',help=""" For Householder Sylvester flow: Number of Householder matrices per flow. Ignored for other flow types.""")
+
+
+args = parser.parse_args()
+
+if args.model == "ffjord" and args.save == None:
+    args.save = "experiments/ffjord"
+elif args.model == "snf" and args.save == None:
+    args.save = "experiments/snf"
+
+if args.data == "piv" and args.experiment_name == None:
+    args.experiment_name = "piv"
+elif args.data == "mnist" and args.experiment_name == None:
+    args.experiment_name = "mnist"
+elif args.data == "cifar10" and args.experiment_name == None:
+    args.experiment_name = "cifar10"
+
+
+# logger
+try:
+    utils.makedirs(args.save)
+    logger = utils.get_logger(logpath=os.path.join(args.save, 'logs'), filepath=os.path.abspath(__file__))
+except:
+    print("Please choose --model [ffjord, snf]")
+    raise
+
+if args.layer_type == "blend":
+    logger.info("!! Setting time_length from None to 1.0 due to use of Blend layers.")
+    args.time_length = 1.0
+
+logger.info(args)
+
+
+# ============================================================================
+# Data handling
+# ============================================================================
+def add_noise(x):
+    """
+    [0, 1] -> [0, 255] -> add noise -> [0, 1]
+    """
+    if args.add_noise:
+        noise = x.new().resize_as_(x).uniform_()
+        x = x * 255 + noise
+        x = x / 256
+    return x
+
+
+def get_train_loader(train_set, epoch):
+    if args.batch_size_schedule != "":
+        epochs = [0] + list(map(int, args.batch_size_schedule.split("-")))
+        n_passed = sum(np.array(epochs) <= epoch)
+        current_batch_size = int(args.batch_size * n_passed)
+    else:
+        current_batch_size = args.batch_size
+    train_loader = torch.utils.data.DataLoader(
+        dataset=train_set, batch_size=current_batch_size, shuffle=True, drop_last=True, pin_memory=True
+    )
+    logger.info("===> Using batch size {}. Total {} iterations/epoch.".format(current_batch_size, len(train_loader)))
+    return train_loader
+
+
+def get_dataset(args):
+    trans = lambda im_size: tforms.Compose([tforms.Resize(im_size), tforms.ToTensor(), add_noise])
+
+    if args.data == "mnist":
+        im_dim = 1
+        im_size = 28 if args.imagesize is None else args.imagesize
+        train_set = dset.MNIST(root="./data", train=True, transform=trans(im_size), download=True)
+        test_set = dset.MNIST(root="./data", train=False, transform=trans(im_size), download=True)
+    elif args.data == "piv":
+        im_dim = 2
+        im_size = 32 if args.imagesize is None else args.imagesize
+        train_set = dataset.H5Dataset("/home/bahr/cdm/data/ISPIV_dataset/Batch_Training-Dataset_2Labels_S12_SynthImg_Alex.hdf5")
+        test_set = dataset.H5Dataset("/home/bahr/cdm/data/ISPIV_dataset/Batch_Validation-Dataset_2Labels_S12_SynthImg_Alex.hdf5")
+    elif args.data == "cifar10":
+        im_dim = 3
+        im_size = 32 if args.imagesize is None else args.imagesize
+        train_set = dset.CIFAR10(
+            root="./data", train=True, transform=tforms.Compose([
+                tforms.Resize(im_size),
+                tforms.RandomHorizontalFlip(),
+                tforms.ToTensor(),
+                add_noise,
+            ]), download=True
+        )
+        test_set = dset.CIFAR10(root="./data", train=False, transform=trans(im_size), download=True)
+
+    data_shape = (im_dim, im_size, im_size)
+    if not args.conv:
+        data_shape = (im_dim * im_size * im_size,)
+
+    test_loader = torch.utils.data.DataLoader(
+        dataset=test_set, batch_size=args.test_batch_size, shuffle=False, drop_last=True
+    )
+    return train_set, test_loader, data_shape
+
+
+# ============================================================================
+# Main
+# ============================================================================
+if __name__ == "__main__":
+
+    train_set, test_loader, data_shape = get_dataset(args)
+    train_loader = get_train_loader(train_set, args.num_epochs)
+
+    if args.model == "ffjord":
+        train_cnf.run(args, logger, train_loader, test_loader, data_shape)
+    elif args.model == "snf":
+        train_snf.run(args, logger, train_loader, test_loader, data_shape)
+
+Namespace(JFrobint=None, JdiagFrobint=None, JoffdiagFrobint=None, add_noise=True, alpha=1e-06, atol=1e-05, autoencode=False, batch_norm=False, batch_size=100, batch_size_schedule='', begin_epoch=1, conv=True, data='mnist', dims='8,32,32,8', divergence_fn='approximate', dl2int=None, evaluation=False, experiment_name='mnist', imagesize=None, l1int=None, l2int=None, layer_type='ignore', log_freq=10, lr=0.001, max_grad_norm=10000000000.0, model='ffjord', multiscale=False, nonlinearity='softplus', num_blocks=1, num_epochs=1000, num_flows=4, num_householder=8, parallel=False, rademacher=True, residual=False, resume=None, rtol=1e-05, save='experiments/ffjord', save_recon_images_size=16, solver='dopri5', spectral_norm=False, spectral_norm_niter=10, step_size=None, strides='2,2,1,-2,-2', test_atol=None, test_batch_size=200, test_rtol=None, test_solver=None, time_length=1.0, time_penalty=0, train_T=True, val_freq=1, warmup_iters=1000, weight_decay=0.0, z_size=64)
+===> Using batch size 100. Total 600 iterations/epoch.
+SequentialFlow(
+  (chain): ModuleList(
+    (0): LogitTransform()
+    (1): CNF(
+      (odefunc): RegularizedODEfunc(
+        (odefunc): ODEfunc(
+          (diffeq): ODEnet(
+            (layers): ModuleList(
+              (0): IgnoreConv2d(
+                (_layer): Conv2d(1, 8, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+              )
+              (1): IgnoreConv2d(
+                (_layer): Conv2d(8, 32, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+              )
+              (2): IgnoreConv2d(
+                (_layer): Conv2d(32, 32, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+              )
+              (3): IgnoreConv2d(
+                (_layer): ConvTranspose2d(32, 8, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+              )
+              (4): IgnoreConv2d(
+                (_layer): ConvTranspose2d(8, 1, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+              )
+            )
+            (activation_fns): ModuleList(
+              (0): Softplus(beta=1, threshold=20)
+              (1): Softplus(beta=1, threshold=20)
+              (2): Softplus(beta=1, threshold=20)
+              (3): Softplus(beta=1, threshold=20)
+            )
+          )
+        )
+      )
+    )
+  )
+)
+Number of trainable parameters: 17746
+Iter 0000 | Time 0.3077(0.3077) | Bit/dim 29.7129(29.7129) | Steps 41(41.00) | Grad Norm 15.6404(15.6404) | Total Time 1.00(1.00)
+Iter 0010 | Time 0.1249(0.2597) | Bit/dim 29.2923(29.6653) | Steps 41(41.00) | Grad Norm 15.1915(15.6011) | Total Time 1.00(1.00)
+Iter 0020 | Time 0.1247(0.2243) | Bit/dim 29.2277(29.6068) | Steps 41(41.00) | Grad Norm 15.2093(15.5612) | Total Time 1.00(1.00)
+Iter 0030 | Time 0.1247(0.1982) | Bit/dim 29.4596(29.5482) | Steps 41(41.00) | Grad Norm 15.3782(15.5337) | Total Time 1.00(1.00)
+Iter 0040 | Time 0.1247(0.1789) | Bit/dim 29.1261(29.4539) | Steps 41(41.00) | Grad Norm 15.2931(15.5141) | Total Time 1.00(1.00)
+Iter 0050 | Time 0.1249(0.1648) | Bit/dim 29.0570(29.3350) | Steps 41(41.00) | Grad Norm 15.8151(15.5120) | Total Time 1.00(1.00)
+Iter 0060 | Time 0.1238(0.1543) | Bit/dim 28.5614(29.1778) | Steps 41(41.00) | Grad Norm 15.9574(15.5884) | Total Time 1.00(1.00)
+Iter 0070 | Time 0.1252(0.1466) | Bit/dim 28.0535(28.9347) | Steps 41(41.00) | Grad Norm 16.6477(15.7706) | Total Time 1.00(1.00)
+Iter 0080 | Time 0.1254(0.1411) | Bit/dim 27.4599(28.6126) | Steps 41(41.00) | Grad Norm 18.8457(16.2556) | Total Time 1.00(1.00)
+/home/bahr/cdm/main.py
+#!/usr/bin/env python3
+import argparse
+import os
+import time
+import numpy as np
+
+import torch
+import torchvision.datasets as dset
+import torchvision.transforms as tforms
+
+import lib.utils as utils
+import lib.dataset as dataset
+
+import models.train_cnf as train_cnf
+import models.train_snf as train_snf
+
+
+# ============================================================================
+# Arguments general
+# ============================================================================
+torch.backends.cudnn.benchmark = True
+parser = argparse.ArgumentParser("Continuous Depth Models")
+
+parser.add_argument("--model", choices=["ffjord", "snf"], type=str)
+parser.add_argument("--data", choices=["piv","mnist", "cifar10"], type=str, default="mnist")
+
+parser.add_argument("--evaluation", type=bool, default=False)
+parser.add_argument("--num_epochs", type=int, default=1000)
+parser.add_argument("--batch_size", type=int, default=100)
+parser.add_argument("--batch_size_schedule", type=str, default="", help="Increases the batchsize at every given epoch, dash separated.")
+parser.add_argument("--test_batch_size", type=int, default=200)
+parser.add_argument("--lr", type=float, default=1e-3)
+
+# ============================================================================
+# Arguments evaluation
+# ============================================================================
+parser.add_argument("--save_recon_images_size", type=int, default=8)
+parser.add_argument("--experiment_name", type=str, default=None)
+parser.add_argument("--save", type=str, default=None)
+
+# ============================================================================
+# Arguments for ffjord
+# ============================================================================
+SOLVERS = ["dopri5", "bdf", "rk4", "midpoint", 'adams', 'explicit_adams']
+parser.add_argument("--dims", type=str, default="8,32,32,8")
+parser.add_argument("--strides", type=str, default="2,2,1,-2,-2")
+parser.add_argument("--num_blocks", type=int, default=1, help='Number of stacked CNFs.')
+
+parser.add_argument("--conv", type=eval, default=True, choices=[True, False])
+parser.add_argument(
+    "--layer_type", type=str, default="ignore",
+    choices=["ignore", "concat", "concat_v2", "squash", "concatsquash", "concatcoord", "hyper", "blend"]
+)
+parser.add_argument("--divergence_fn", type=str, default="approximate", choices=["brute_force", "approximate"])
+parser.add_argument(
+    "--nonlinearity", type=str, default="softplus", choices=["tanh", "relu", "softplus", "elu", "swish"]
+)
+parser.add_argument('--solver', type=str, default='dopri5', choices=SOLVERS)
+parser.add_argument('--atol', type=float, default=1e-5)
+parser.add_argument('--rtol', type=float, default=1e-5)
+parser.add_argument("--step_size", type=float, default=None, help="Optional fixed step size.")
+
+parser.add_argument('--test_solver', type=str, default=None, choices=SOLVERS + [None])
+parser.add_argument('--test_atol', type=float, default=None)
+parser.add_argument('--test_rtol', type=float, default=None)
+
+parser.add_argument("--imagesize", type=int, default=None)
+parser.add_argument("--alpha", type=float, default=1e-6)
+parser.add_argument('--time_length', type=float, default=1.0)
+parser.add_argument('--train_T', type=eval, default=True)
+
+parser.add_argument("--warmup_iters", type=float, default=1000)
+parser.add_argument("--weight_decay", type=float, default=0.0)
+parser.add_argument("--spectral_norm_niter", type=int, default=10)
+
+parser.add_argument("--add_noise", type=eval, default=True, choices=[True, False])
+parser.add_argument("--batch_norm", type=eval, default=False, choices=[True, False])
+parser.add_argument('--residual', type=eval, default=False, choices=[True, False])
+parser.add_argument('--autoencode', type=eval, default=False, choices=[True, False])
+parser.add_argument('--rademacher', type=eval, default=True, choices=[True, False])
+parser.add_argument('--spectral_norm', type=eval, default=False, choices=[True, False])
+parser.add_argument('--multiscale', type=eval, default=False, choices=[True, False])
+parser.add_argument('--parallel', type=eval, default=False, choices=[True, False])
+
+# Regularizations
+parser.add_argument('--l1int', type=float, default=None, help="int_t ||f||_1")
+parser.add_argument('--l2int', type=float, default=None, help="int_t ||f||_2")
+parser.add_argument('--dl2int', type=float, default=None, help="int_t ||f^T df/dt||_2")
+parser.add_argument('--JFrobint', type=float, default=None, help="int_t ||df/dx||_F")
+parser.add_argument('--JdiagFrobint', type=float, default=None, help="int_t ||df_i/dx_i||_F")
+parser.add_argument('--JoffdiagFrobint', type=float, default=None, help="int_t ||df/dx - df_i/dx_i||_F")
+
+parser.add_argument("--time_penalty", type=float, default=0, help="Regularization on the end_time.")
+parser.add_argument("--max_grad_norm", type=float, default=1e10,
+    help="Max norm of graidents (default is just stupidly high to avoid any clipping)")
+
+parser.add_argument("--begin_epoch", type=int, default=1)
+parser.add_argument("--resume", type=str, default=None)
+parser.add_argument("--val_freq", type=int, default=1)
+parser.add_argument("--log_freq", type=int, default=10)
+
+# ============================================================================
+# Arguments for snf
+# ============================================================================
+parser.add_argument('--z_size', type=int, default=64, metavar='ZSIZE', help='how many stochastic hidden units')
+parser.add_argument('--num_flows', type=int, default=4,metavar='NUM_FLOWS', help='Number of flow layers, ignored in absence of flows')
+parser.add_argument('--num_householder', type=int, default=8, metavar='NUM_HOUSEHOLDERS',help=""" For Householder Sylvester flow: Number of Householder matrices per flow. Ignored for other flow types.""")
+
+
+args = parser.parse_args()
+
+if args.model == "ffjord" and args.save == None:
+    args.save = "experiments/ffjord"
+elif args.model == "snf" and args.save == None:
+    args.save = "experiments/snf"
+
+if args.data == "piv" and args.experiment_name == None:
+    args.experiment_name = "piv"
+elif args.data == "mnist" and args.experiment_name == None:
+    args.experiment_name = "mnist"
+elif args.data == "cifar10" and args.experiment_name == None:
+    args.experiment_name = "cifar10"
+
+
+# logger
+try:
+    utils.makedirs(args.save)
+    logger = utils.get_logger(logpath=os.path.join(args.save, 'logs'), filepath=os.path.abspath(__file__))
+except:
+    print("Please choose --model [ffjord, snf]")
+    raise
+
+if args.layer_type == "blend":
+    logger.info("!! Setting time_length from None to 1.0 due to use of Blend layers.")
+    args.time_length = 1.0
+
+logger.info(args)
+
+
+# ============================================================================
+# Data handling
+# ============================================================================
+def add_noise(x):
+    """
+    [0, 1] -> [0, 255] -> add noise -> [0, 1]
+    """
+    if args.add_noise:
+        noise = x.new().resize_as_(x).uniform_()
+        x = x * 255 + noise
+        x = x / 256
+    return x
+
+
+def get_train_loader(train_set, epoch):
+    if args.batch_size_schedule != "":
+        epochs = [0] + list(map(int, args.batch_size_schedule.split("-")))
+        n_passed = sum(np.array(epochs) <= epoch)
+        current_batch_size = int(args.batch_size * n_passed)
+    else:
+        current_batch_size = args.batch_size
+    train_loader = torch.utils.data.DataLoader(
+        dataset=train_set, batch_size=current_batch_size, shuffle=True, drop_last=True, pin_memory=True
+    )
+    logger.info("===> Using batch size {}. Total {} iterations/epoch.".format(current_batch_size, len(train_loader)))
+    return train_loader
+
+
+def get_dataset(args):
+    trans = lambda im_size: tforms.Compose([tforms.Resize(im_size), tforms.ToTensor(), add_noise])
+
+    if args.data == "mnist":
+        im_dim = 1
+        im_size = 28 if args.imagesize is None else args.imagesize
+        train_set = dset.MNIST(root="./data", train=True, transform=trans(im_size), download=True)
+        test_set = dset.MNIST(root="./data", train=False, transform=trans(im_size), download=True)
+    elif args.data == "piv":
+        im_dim = 2
+        im_size = 32 if args.imagesize is None else args.imagesize
+        train_set = dataset.H5Dataset("/home/bahr/cdm/data/ISPIV_dataset/Batch_Training-Dataset_2Labels_S12_SynthImg_Alex.hdf5")
+        test_set = dataset.H5Dataset("/home/bahr/cdm/data/ISPIV_dataset/Batch_Validation-Dataset_2Labels_S12_SynthImg_Alex.hdf5")
+    elif args.data == "cifar10":
+        im_dim = 3
+        im_size = 32 if args.imagesize is None else args.imagesize
+        train_set = dset.CIFAR10(
+            root="./data", train=True, transform=tforms.Compose([
+                tforms.Resize(im_size),
+                tforms.RandomHorizontalFlip(),
+                tforms.ToTensor(),
+                add_noise,
+            ]), download=True
+        )
+        test_set = dset.CIFAR10(root="./data", train=False, transform=trans(im_size), download=True)
+
+    data_shape = (im_dim, im_size, im_size)
+    if not args.conv:
+        data_shape = (im_dim * im_size * im_size,)
+
+    test_loader = torch.utils.data.DataLoader(
+        dataset=test_set, batch_size=args.test_batch_size, shuffle=False, drop_last=True
+    )
+    return train_set, test_loader, data_shape
+
+
+# ============================================================================
+# Main
+# ============================================================================
+if __name__ == "__main__":
+
+    train_set, test_loader, data_shape = get_dataset(args)
+    train_loader = get_train_loader(train_set, args.num_epochs)
+
+    if args.model == "ffjord":
+        train_cnf.run(args, logger, train_loader, test_loader, data_shape)
+    elif args.model == "snf":
+        train_snf.run(args, logger, train_loader, test_loader, data_shape)
+
+Namespace(JFrobint=None, JdiagFrobint=None, JoffdiagFrobint=None, add_noise=True, alpha=1e-06, atol=1e-05, autoencode=False, batch_norm=False, batch_size=100, batch_size_schedule='', begin_epoch=1, conv=True, data='mnist', dims='8,32,32,8', divergence_fn='approximate', dl2int=None, evaluation=False, experiment_name='mnist', imagesize=None, l1int=None, l2int=None, layer_type='ignore', log_freq=10, lr=0.001, max_grad_norm=10000000000.0, model='ffjord', multiscale=False, nonlinearity='softplus', num_blocks=1, num_epochs=1000, num_flows=4, num_householder=8, parallel=False, rademacher=True, residual=False, resume=None, rtol=1e-05, save='experiments/ffjord', save_recon_images_size=16, solver='dopri5', spectral_norm=False, spectral_norm_niter=10, step_size=None, strides='2,2,1,-2,-2', test_atol=None, test_batch_size=200, test_rtol=None, test_solver=None, time_length=1.0, time_penalty=0, train_T=True, val_freq=1, warmup_iters=1000, weight_decay=0.0, z_size=64)
+===> Using batch size 100. Total 600 iterations/epoch.
+SequentialFlow(
+  (chain): ModuleList(
+    (0): LogitTransform()
+    (1): CNF(
+      (odefunc): RegularizedODEfunc(
+        (odefunc): ODEfunc(
+          (diffeq): ODEnet(
+            (layers): ModuleList(
+              (0): IgnoreConv2d(
+                (_layer): Conv2d(1, 8, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+              )
+              (1): IgnoreConv2d(
+                (_layer): Conv2d(8, 32, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+              )
+              (2): IgnoreConv2d(
+                (_layer): Conv2d(32, 32, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+              )
+              (3): IgnoreConv2d(
+                (_layer): ConvTranspose2d(32, 8, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+              )
+              (4): IgnoreConv2d(
+                (_layer): ConvTranspose2d(8, 1, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+              )
+            )
+            (activation_fns): ModuleList(
+              (0): Softplus(beta=1, threshold=20)
+              (1): Softplus(beta=1, threshold=20)
+              (2): Softplus(beta=1, threshold=20)
+              (3): Softplus(beta=1, threshold=20)
+            )
+          )
+        )
+      )
+    )
+  )
+)
+Number of trainable parameters: 17746
+Iter 0000 | Time 0.3042(0.3042) | Bit/dim 28.7651(28.7651) | Steps 41(41.00) | Grad Norm 15.1504(15.1504) | Total Time 1.00(1.00)
+Iter 0010 | Time 0.1217(0.2565) | Bit/dim 28.4002(28.7418) | Steps 41(41.00) | Grad Norm 14.8623(15.1564) | Total Time 1.00(1.00)
+Iter 0020 | Time 0.1213(0.2212) | Bit/dim 28.4880(28.7233) | Steps 41(41.00) | Grad Norm 15.0932(15.1661) | Total Time 1.00(1.00)
+Iter 0030 | Time 0.1214(0.1951) | Bit/dim 28.6184(28.6819) | Steps 41(41.00) | Grad Norm 15.2882(15.1760) | Total Time 1.00(1.00)
+Iter 0040 | Time 0.1213(0.1758) | Bit/dim 28.3860(28.6169) | Steps 41(41.00) | Grad Norm 15.2410(15.1751) | Total Time 1.00(1.00)
+Iter 0050 | Time 0.1220(0.1616) | Bit/dim 28.0376(28.5383) | Steps 41(41.00) | Grad Norm 14.8695(15.1862) | Total Time 1.00(1.00)
+Iter 0060 | Time 0.1218(0.1511) | Bit/dim 27.8828(28.4277) | Steps 41(41.00) | Grad Norm 15.4886(15.2716) | Total Time 1.00(1.00)
+Iter 0070 | Time 0.1271(0.1435) | Bit/dim 27.7211(28.2818) | Steps 41(41.00) | Grad Norm 16.0958(15.4311) | Total Time 1.00(1.00)
+Iter 0080 | Time 0.1290(0.1382) | Bit/dim 27.2465(28.0506) | Steps 41(41.00) | Grad Norm 17.4972(15.7449) | Total Time 1.00(1.00)
+Iter 0090 | Time 0.1277(0.1343) | Bit/dim 26.5392(27.7268) | Steps 41(41.00) | Grad Norm 20.5889(16.5124) | Total Time 1.00(1.00)
+Iter 0100 | Time 0.1253(0.1321) | Bit/dim 24.8577(27.1780) | Steps 41(41.00) | Grad Norm 25.9434(18.2202) | Total Time 1.00(1.00)
+Iter 0110 | Time 0.1255(0.1304) | Bit/dim 22.4210(26.2214) | Steps 41(41.00) | Grad Norm 35.1777(21.4422) | Total Time 1.00(1.00)
+Iter 0120 | Time 0.1257(0.1292) | Bit/dim 19.1092(24.7030) | Steps 41(41.00) | Grad Norm 34.5863(25.1768) | Total Time 1.00(1.00)
+Iter 0130 | Time 0.1494(0.1322) | Bit/dim 16.2014(22.7451) | Steps 47(41.85) | Grad Norm 23.9372(26.2402) | Total Time 1.00(1.00)
+Iter 0140 | Time 0.2189(0.1393) | Bit/dim 15.3175(20.9018) | Steps 65(43.74) | Grad Norm 13.8256(23.8944) | Total Time 1.00(1.00)
+Iter 0150 | Time 0.2105(0.1587) | Bit/dim 13.9445(19.2358) | Steps 65(49.32) | Grad Norm 8.8198(20.4293) | Total Time 1.00(1.00)
+Iter 0160 | Time 0.2035(0.1720) | Bit/dim 13.8797(17.8704) | Steps 65(53.44) | Grad Norm 8.6652(17.4085) | Total Time 1.00(1.00)
+/home/bahr/cdm/main.py
+#!/usr/bin/env python3
+import argparse
+import os
+import time
+import numpy as np
+
+import torch
+import torchvision.datasets as dset
+import torchvision.transforms as tforms
+
+import lib.utils as utils
+import lib.dataset as dataset
+
+import models.train_cnf as train_cnf
+import models.train_snf as train_snf
+
+
+# ============================================================================
+# Arguments general
+# ============================================================================
+torch.backends.cudnn.benchmark = True
+parser = argparse.ArgumentParser("Continuous Depth Models")
+
+parser.add_argument("--model", choices=["ffjord", "snf"], type=str)
+parser.add_argument("--data", choices=["piv","mnist", "cifar10"], type=str, default="mnist")
+
+parser.add_argument("--num_epochs", type=int, default=1000)
+parser.add_argument("--batch_size", type=int, default=100)
+parser.add_argument("--batch_size_schedule", type=str, default="", help="Increases the batchsize at every given epoch, dash separated.")
+parser.add_argument("--test_batch_size", type=int, default=200)
+parser.add_argument("--lr", type=float, default=1e-3)
+
+# ============================================================================
+# Arguments evaluation
+# ============================================================================
+parser.add_argument("--evaluation_numerical", type=bool, default=False)
+parser.add_argument("--save_recon_images_size", type=int, default=8)
+parser.add_argument("--experiment_name", type=str, default=None)
+parser.add_argument("--save", type=str, default=None)
+
+# ============================================================================
+# Arguments for ffjord
+# ============================================================================
+SOLVERS = ["dopri5", "bdf", "rk4", "midpoint", 'adams', 'explicit_adams']
+parser.add_argument("--dims", type=str, default="8,32,32,8")
+parser.add_argument("--strides", type=str, default="2,2,1,-2,-2")
+parser.add_argument("--num_blocks", type=int, default=1, help='Number of stacked CNFs.')
+
+parser.add_argument("--conv", type=eval, default=True, choices=[True, False])
+parser.add_argument(
+    "--layer_type", type=str, default="ignore",
+    choices=["ignore", "concat", "concat_v2", "squash", "concatsquash", "concatcoord", "hyper", "blend"]
+)
+parser.add_argument("--divergence_fn", type=str, default="approximate", choices=["brute_force", "approximate"])
+parser.add_argument(
+    "--nonlinearity", type=str, default="softplus", choices=["tanh", "relu", "softplus", "elu", "swish"]
+)
+parser.add_argument('--solver', type=str, default='dopri5', choices=SOLVERS)
+parser.add_argument('--atol', type=float, default=1e-5)
+parser.add_argument('--rtol', type=float, default=1e-5)
+parser.add_argument("--step_size", type=float, default=None, help="Optional fixed step size.")
+
+parser.add_argument('--test_solver', type=str, default=None, choices=SOLVERS + [None])
+parser.add_argument('--test_atol', type=float, default=None)
+parser.add_argument('--test_rtol', type=float, default=None)
+
+parser.add_argument("--imagesize", type=int, default=None)
+parser.add_argument("--alpha", type=float, default=1e-6)
+parser.add_argument('--time_length', type=float, default=1.0)
+parser.add_argument('--train_T', type=eval, default=True)
+
+parser.add_argument("--warmup_iters", type=float, default=1000)
+parser.add_argument("--weight_decay", type=float, default=0.0)
+parser.add_argument("--spectral_norm_niter", type=int, default=10)
+
+parser.add_argument("--add_noise", type=eval, default=True, choices=[True, False])
+parser.add_argument("--batch_norm", type=eval, default=False, choices=[True, False])
+parser.add_argument('--residual', type=eval, default=False, choices=[True, False])
+parser.add_argument('--autoencode', type=eval, default=False, choices=[True, False])
+parser.add_argument('--rademacher', type=eval, default=True, choices=[True, False])
+parser.add_argument('--spectral_norm', type=eval, default=False, choices=[True, False])
+parser.add_argument('--multiscale', type=eval, default=False, choices=[True, False])
+parser.add_argument('--parallel', type=eval, default=False, choices=[True, False])
+
+# Regularizations
+parser.add_argument('--l1int', type=float, default=None, help="int_t ||f||_1")
+parser.add_argument('--l2int', type=float, default=None, help="int_t ||f||_2")
+parser.add_argument('--dl2int', type=float, default=None, help="int_t ||f^T df/dt||_2")
+parser.add_argument('--JFrobint', type=float, default=None, help="int_t ||df/dx||_F")
+parser.add_argument('--JdiagFrobint', type=float, default=None, help="int_t ||df_i/dx_i||_F")
+parser.add_argument('--JoffdiagFrobint', type=float, default=None, help="int_t ||df/dx - df_i/dx_i||_F")
+
+parser.add_argument("--time_penalty", type=float, default=0, help="Regularization on the end_time.")
+parser.add_argument("--max_grad_norm", type=float, default=1e10,
+    help="Max norm of graidents (default is just stupidly high to avoid any clipping)")
+
+parser.add_argument("--begin_epoch", type=int, default=1)
+parser.add_argument("--resume", type=str, default=None)
+parser.add_argument("--val_freq", type=int, default=1)
+parser.add_argument("--log_freq", type=int, default=10)
+
+# ============================================================================
+# Arguments for snf
+# ============================================================================
+parser.add_argument('--z_size', type=int, default=64, metavar='ZSIZE', help='how many stochastic hidden units')
+parser.add_argument('--num_flows', type=int, default=4,metavar='NUM_FLOWS', help='Number of flow layers, ignored in absence of flows')
+parser.add_argument('--num_householder', type=int, default=8, metavar='NUM_HOUSEHOLDERS',help=""" For Householder Sylvester flow: Number of Householder matrices per flow. Ignored for other flow types.""")
+
+
+args = parser.parse_args()
+
+if args.model == "ffjord" and args.save == None:
+    args.save = "experiments/ffjord"
+elif args.model == "snf" and args.save == None:
+    args.save = "experiments/snf"
+
+if args.data == "piv" and args.experiment_name == None:
+    args.experiment_name = "piv"
+elif args.data == "mnist" and args.experiment_name == None:
+    args.experiment_name = "mnist"
+elif args.data == "cifar10" and args.experiment_name == None:
+    args.experiment_name = "cifar10"
+
+
+# logger
+try:
+    utils.makedirs(args.save)
+    logger = utils.get_logger(logpath=os.path.join(args.save, 'logs'), filepath=os.path.abspath(__file__))
+except:
+    print("Please choose --model [ffjord, snf]")
+    raise
+
+if args.layer_type == "blend":
+    logger.info("!! Setting time_length from None to 1.0 due to use of Blend layers.")
+    args.time_length = 1.0
+
+logger.info(args)
+
+
+# ============================================================================
+# Data handling
+# ============================================================================
+def add_noise(x):
+    """
+    [0, 1] -> [0, 255] -> add noise -> [0, 1]
+    """
+    if args.add_noise:
+        noise = x.new().resize_as_(x).uniform_()
+        x = x * 255 + noise
+        x = x / 256
+    return x
+
+
+def get_train_loader(train_set, epoch):
+    if args.batch_size_schedule != "":
+        epochs = [0] + list(map(int, args.batch_size_schedule.split("-")))
+        n_passed = sum(np.array(epochs) <= epoch)
+        current_batch_size = int(args.batch_size * n_passed)
+    else:
+        current_batch_size = args.batch_size
+    train_loader = torch.utils.data.DataLoader(
+        dataset=train_set, batch_size=current_batch_size, shuffle=True, drop_last=True, pin_memory=True
+    )
+    logger.info("===> Using batch size {}. Total {} iterations/epoch.".format(current_batch_size, len(train_loader)))
+    return train_loader
+
+
+def get_dataset(args):
+    trans = lambda im_size: tforms.Compose([tforms.Resize(im_size), tforms.ToTensor(), add_noise])
+
+    if args.data == "mnist":
+        im_dim = 1
+        im_size = 28 if args.imagesize is None else args.imagesize
+        train_set = dset.MNIST(root="./data", train=True, transform=trans(im_size), download=True)
+        test_set = dset.MNIST(root="./data", train=False, transform=trans(im_size), download=True)
+    elif args.data == "piv":
+        im_dim = 2
+        im_size = 32 if args.imagesize is None else args.imagesize
+        train_set = dataset.H5Dataset("/home/bahr/cdm/data/ISPIV_dataset/Batch_Training-Dataset_2Labels_S12_SynthImg_Alex.hdf5")
+        test_set = dataset.H5Dataset("/home/bahr/cdm/data/ISPIV_dataset/Batch_Validation-Dataset_2Labels_S12_SynthImg_Alex.hdf5")
+    elif args.data == "cifar10":
+        im_dim = 3
+        im_size = 32 if args.imagesize is None else args.imagesize
+        train_set = dset.CIFAR10(
+            root="./data", train=True, transform=tforms.Compose([
+                tforms.Resize(im_size),
+                tforms.RandomHorizontalFlip(),
+                tforms.ToTensor(),
+                add_noise,
+            ]), download=True
+        )
+        test_set = dset.CIFAR10(root="./data", train=False, transform=trans(im_size), download=True)
+
+    data_shape = (im_dim, im_size, im_size)
+    if not args.conv:
+        data_shape = (im_dim * im_size * im_size,)
+
+    test_loader = torch.utils.data.DataLoader(
+        dataset=test_set, batch_size=args.test_batch_size, shuffle=False, drop_last=True
+    )
+    return train_set, test_loader, data_shape
+
+
+# ============================================================================
+# Main
+# ============================================================================
+if __name__ == "__main__":
+
+    train_set, test_loader, data_shape = get_dataset(args)
+    train_loader = get_train_loader(train_set, args.num_epochs)
+
+    if args.model == "ffjord":
+        train_cnf.run(args, logger, train_loader, test_loader, data_shape)
+    elif args.model == "snf":
+        train_snf.run(args, logger, train_loader, test_loader, data_shape)
+
+Namespace(JFrobint=None, JdiagFrobint=None, JoffdiagFrobint=None, add_noise=True, alpha=1e-06, atol=1e-05, autoencode=False, batch_norm=False, batch_size=100, batch_size_schedule='', begin_epoch=1, conv=True, data='mnist', dims='8,32,32,8', divergence_fn='approximate', dl2int=None, evaluation_numerical=False, experiment_name='mnist', imagesize=None, l1int=None, l2int=None, layer_type='ignore', log_freq=10, lr=0.001, max_grad_norm=10000000000.0, model='ffjord', multiscale=False, nonlinearity='softplus', num_blocks=1, num_epochs=1000, num_flows=4, num_householder=8, parallel=False, rademacher=True, residual=False, resume=None, rtol=1e-05, save='experiments/ffjord', save_recon_images_size=16, solver='dopri5', spectral_norm=False, spectral_norm_niter=10, step_size=None, strides='2,2,1,-2,-2', test_atol=None, test_batch_size=200, test_rtol=None, test_solver=None, time_length=1.0, time_penalty=0, train_T=True, val_freq=1, warmup_iters=1000, weight_decay=0.0, z_size=64)
+===> Using batch size 100. Total 600 iterations/epoch.
+SequentialFlow(
+  (chain): ModuleList(
+    (0): LogitTransform()
+    (1): CNF(
+      (odefunc): RegularizedODEfunc(
+        (odefunc): ODEfunc(
+          (diffeq): ODEnet(
+            (layers): ModuleList(
+              (0): IgnoreConv2d(
+                (_layer): Conv2d(1, 8, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+              )
+              (1): IgnoreConv2d(
+                (_layer): Conv2d(8, 32, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+              )
+              (2): IgnoreConv2d(
+                (_layer): Conv2d(32, 32, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+              )
+              (3): IgnoreConv2d(
+                (_layer): ConvTranspose2d(32, 8, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+              )
+              (4): IgnoreConv2d(
+                (_layer): ConvTranspose2d(8, 1, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+              )
+            )
+            (activation_fns): ModuleList(
+              (0): Softplus(beta=1, threshold=20)
+              (1): Softplus(beta=1, threshold=20)
+              (2): Softplus(beta=1, threshold=20)
+              (3): Softplus(beta=1, threshold=20)
+            )
+          )
+        )
+      )
+    )
+  )
+)
+Number of trainable parameters: 17746
+Iter 0000 | Time 0.2959(0.2959) | Bit/dim 32.7877(32.7877) | Steps 41(41.00) | Grad Norm 18.7329(18.7329) | Total Time 1.00(1.00)
+Iter 0010 | Time 0.1210(0.2503) | Bit/dim 32.4281(32.7360) | Steps 41(41.00) | Grad Norm 18.3827(18.6661) | Total Time 1.00(1.00)
+Iter 0020 | Time 0.1202(0.2162) | Bit/dim 32.7440(32.7077) | Steps 41(41.00) | Grad Norm 18.4441(18.5958) | Total Time 1.00(1.00)
+Iter 0030 | Time 0.1204(0.1912) | Bit/dim 32.3233(32.6341) | Steps 41(41.00) | Grad Norm 17.8927(18.4689) | Total Time 1.00(1.00)
+Iter 0040 | Time 0.1259(0.1733) | Bit/dim 32.3080(32.5569) | Steps 41(41.00) | Grad Norm 17.7006(18.3085) | Total Time 1.00(1.00)
+/home/bahr/cdm/main.py
+#!/usr/bin/env python3
+import argparse
+import os
+import time
+import numpy as np
+
+import torch
+import torchvision.datasets as dset
+import torchvision.transforms as tforms
+
+import lib.utils as utils
+import lib.dataset as dataset
+
+import models.train_cnf as train_cnf
+import models.train_snf as train_snf
+
+
+# ============================================================================
+# Arguments general
+# ============================================================================
+torch.backends.cudnn.benchmark = True
+parser = argparse.ArgumentParser("Continuous Depth Models")
+
+parser.add_argument("--model", choices=["ffjord", "snf"], type=str)
+parser.add_argument("--data", choices=["piv","mnist", "cifar10"], type=str, default="mnist")
+
+parser.add_argument("--num_epochs", type=int, default=1000)
+parser.add_argument("--batch_size", type=int, default=100)
+parser.add_argument("--batch_size_schedule", type=str, default="", help="Increases the batchsize at every given epoch, dash separated.")
+parser.add_argument("--test_batch_size", type=int, default=200)
+parser.add_argument("--lr", type=float, default=1e-3)
+
+# ============================================================================
+# Arguments evaluation
+# ============================================================================
+parser.add_argument("--evaluation_numerical", type=bool, default=False)
+parser.add_argument("--save_recon_images_size", type=int, default=8)
+parser.add_argument("--experiment_name", type=str, default=None)
+parser.add_argument("--save", type=str, default=None)
+
+# ============================================================================
+# Arguments for ffjord
+# ============================================================================
+SOLVERS = ["dopri5", "bdf", "rk4", "midpoint", 'adams', 'explicit_adams']
+parser.add_argument("--dims", type=str, default="8,32,32,8")
+parser.add_argument("--strides", type=str, default="2,2,1,-2,-2")
+parser.add_argument("--num_blocks", type=int, default=1, help='Number of stacked CNFs.')
+
+parser.add_argument("--conv", type=eval, default=True, choices=[True, False])
+parser.add_argument(
+    "--layer_type", type=str, default="ignore",
+    choices=["ignore", "concat", "concat_v2", "squash", "concatsquash", "concatcoord", "hyper", "blend"]
+)
+parser.add_argument("--divergence_fn", type=str, default="approximate", choices=["brute_force", "approximate"])
+parser.add_argument(
+    "--nonlinearity", type=str, default="softplus", choices=["tanh", "relu", "softplus", "elu", "swish"]
+)
+parser.add_argument('--solver', type=str, default='dopri5', choices=SOLVERS)
+parser.add_argument('--atol', type=float, default=1e-5)
+parser.add_argument('--rtol', type=float, default=1e-5)
+parser.add_argument("--step_size", type=float, default=None, help="Optional fixed step size.")
+
+parser.add_argument('--test_solver', type=str, default=None, choices=SOLVERS + [None])
+parser.add_argument('--test_atol', type=float, default=None)
+parser.add_argument('--test_rtol', type=float, default=None)
+
+parser.add_argument("--imagesize", type=int, default=None)
+parser.add_argument("--alpha", type=float, default=1e-6)
+parser.add_argument('--time_length', type=float, default=1.0)
+parser.add_argument('--train_T', type=eval, default=True)
+
+parser.add_argument("--warmup_iters", type=float, default=1000)
+parser.add_argument("--weight_decay", type=float, default=0.0)
+parser.add_argument("--spectral_norm_niter", type=int, default=10)
+
+parser.add_argument("--add_noise", type=eval, default=True, choices=[True, False])
+parser.add_argument("--batch_norm", type=eval, default=False, choices=[True, False])
+parser.add_argument('--residual', type=eval, default=False, choices=[True, False])
+parser.add_argument('--autoencode', type=eval, default=False, choices=[True, False])
+parser.add_argument('--rademacher', type=eval, default=True, choices=[True, False])
+parser.add_argument('--spectral_norm', type=eval, default=False, choices=[True, False])
+parser.add_argument('--multiscale', type=eval, default=False, choices=[True, False])
+parser.add_argument('--parallel', type=eval, default=False, choices=[True, False])
+
+# Regularizations
+parser.add_argument('--l1int', type=float, default=None, help="int_t ||f||_1")
+parser.add_argument('--l2int', type=float, default=None, help="int_t ||f||_2")
+parser.add_argument('--dl2int', type=float, default=None, help="int_t ||f^T df/dt||_2")
+parser.add_argument('--JFrobint', type=float, default=None, help="int_t ||df/dx||_F")
+parser.add_argument('--JdiagFrobint', type=float, default=None, help="int_t ||df_i/dx_i||_F")
+parser.add_argument('--JoffdiagFrobint', type=float, default=None, help="int_t ||df/dx - df_i/dx_i||_F")
+
+parser.add_argument("--time_penalty", type=float, default=0, help="Regularization on the end_time.")
+parser.add_argument("--max_grad_norm", type=float, default=1e10,
+    help="Max norm of graidents (default is just stupidly high to avoid any clipping)")
+
+parser.add_argument("--begin_epoch", type=int, default=1)
+parser.add_argument("--resume", type=str, default=None)
+parser.add_argument("--val_freq", type=int, default=1)
+parser.add_argument("--log_freq", type=int, default=10)
+
+# ============================================================================
+# Arguments for snf
+# ============================================================================
+parser.add_argument('--z_size', type=int, default=64, metavar='ZSIZE', help='how many stochastic hidden units')
+parser.add_argument('--num_flows', type=int, default=4,metavar='NUM_FLOWS', help='Number of flow layers, ignored in absence of flows')
+parser.add_argument('--num_householder', type=int, default=8, metavar='NUM_HOUSEHOLDERS',help=""" For Householder Sylvester flow: Number of Householder matrices per flow. Ignored for other flow types.""")
+
+
+args = parser.parse_args()
+
+if args.model == "ffjord" and args.save == None:
+    args.save = "experiments/ffjord"
+elif args.model == "snf" and args.save == None:
+    args.save = "experiments/snf"
+
+if args.data == "piv" and args.experiment_name == None:
+    args.experiment_name = "piv"
+elif args.data == "mnist" and args.experiment_name == None:
+    args.experiment_name = "mnist"
+elif args.data == "cifar10" and args.experiment_name == None:
+    args.experiment_name = "cifar10"
+
+
+# logger
+try:
+    utils.makedirs(args.save)
+    logger = utils.get_logger(logpath=os.path.join(args.save, 'logs'), filepath=os.path.abspath(__file__))
+except:
+    print("Please choose --model [ffjord, snf]")
+    raise
+
+if args.layer_type == "blend":
+    logger.info("!! Setting time_length from None to 1.0 due to use of Blend layers.")
+    args.time_length = 1.0
+
+logger.info(args)
+
+
+# ============================================================================
+# Data handling
+# ============================================================================
+def add_noise(x):
+    """
+    [0, 1] -> [0, 255] -> add noise -> [0, 1]
+    """
+    if args.add_noise:
+        noise = x.new().resize_as_(x).uniform_()
+        x = x * 255 + noise
+        x = x / 256
+    return x
+
+
+def get_train_loader(train_set, epoch):
+    if args.batch_size_schedule != "":
+        epochs = [0] + list(map(int, args.batch_size_schedule.split("-")))
+        n_passed = sum(np.array(epochs) <= epoch)
+        current_batch_size = int(args.batch_size * n_passed)
+    else:
+        current_batch_size = args.batch_size
+    train_loader = torch.utils.data.DataLoader(
+        dataset=train_set, batch_size=current_batch_size, shuffle=True, drop_last=True, pin_memory=True
+    )
+    logger.info("===> Using batch size {}. Total {} iterations/epoch.".format(current_batch_size, len(train_loader)))
+    return train_loader
+
+
+def get_dataset(args):
+    trans = lambda im_size: tforms.Compose([tforms.Resize(im_size), tforms.ToTensor(), add_noise])
+
+    if args.data == "mnist":
+        im_dim = 1
+        im_size = 28 if args.imagesize is None else args.imagesize
+        train_set = dset.MNIST(root="./data", train=True, transform=trans(im_size), download=True)
+        test_set = dset.MNIST(root="./data", train=False, transform=trans(im_size), download=True)
+    elif args.data == "piv":
+        im_dim = 2
+        im_size = 32 if args.imagesize is None else args.imagesize
+        train_set = dataset.H5Dataset("/home/bahr/cdm/data/ISPIV_dataset/Batch_Training-Dataset_2Labels_S12_SynthImg_Alex.hdf5")
+        test_set = dataset.H5Dataset("/home/bahr/cdm/data/ISPIV_dataset/Batch_Validation-Dataset_2Labels_S12_SynthImg_Alex.hdf5")
+    elif args.data == "cifar10":
+        im_dim = 3
+        im_size = 32 if args.imagesize is None else args.imagesize
+        train_set = dset.CIFAR10(
+            root="./data", train=True, transform=tforms.Compose([
+                tforms.Resize(im_size),
+                tforms.RandomHorizontalFlip(),
+                tforms.ToTensor(),
+                add_noise,
+            ]), download=True
+        )
+        test_set = dset.CIFAR10(root="./data", train=False, transform=trans(im_size), download=True)
+
+    data_shape = (im_dim, im_size, im_size)
+    if not args.conv:
+        data_shape = (im_dim * im_size * im_size,)
+
+    test_loader = torch.utils.data.DataLoader(
+        dataset=test_set, batch_size=args.test_batch_size, shuffle=False, drop_last=True
+    )
+    return train_set, test_loader, data_shape
+
+
+# ============================================================================
+# Main
+# ============================================================================
+if __name__ == "__main__":
+
+    train_set, test_loader, data_shape = get_dataset(args)
+    train_loader = get_train_loader(train_set, args.num_epochs)
+
+    if args.model == "ffjord":
+        train_cnf.run(args, logger, train_loader, test_loader, data_shape)
+    elif args.model == "snf":
+        train_snf.run(args, logger, train_loader, test_loader, data_shape)
+
+Namespace(JFrobint=None, JdiagFrobint=None, JoffdiagFrobint=None, add_noise=True, alpha=1e-06, atol=1e-05, autoencode=False, batch_norm=False, batch_size=100, batch_size_schedule='', begin_epoch=1, conv=True, data='cifar10', dims='8,32,32,8', divergence_fn='approximate', dl2int=None, evaluation_numerical=False, experiment_name='cifar10', imagesize=None, l1int=None, l2int=None, layer_type='ignore', log_freq=10, lr=0.001, max_grad_norm=10000000000.0, model='ffjord', multiscale=False, nonlinearity='softplus', num_blocks=1, num_epochs=1000, num_flows=4, num_householder=8, parallel=False, rademacher=True, residual=False, resume=None, rtol=1e-05, save='experiments/ffjord', save_recon_images_size=16, solver='dopri5', spectral_norm=False, spectral_norm_niter=10, step_size=None, strides='2,2,1,-2,-2', test_atol=None, test_batch_size=200, test_rtol=None, test_solver=None, time_length=1.0, time_penalty=0, train_T=True, val_freq=1, warmup_iters=1000, weight_decay=0.0, z_size=64)
+===> Using batch size 100. Total 500 iterations/epoch.
+SequentialFlow(
+  (chain): ModuleList(
+    (0): LogitTransform()
+    (1): CNF(
+      (odefunc): RegularizedODEfunc(
+        (odefunc): ODEfunc(
+          (diffeq): ODEnet(
+            (layers): ModuleList(
+              (0): IgnoreConv2d(
+                (_layer): Conv2d(3, 8, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+              )
+              (1): IgnoreConv2d(
+                (_layer): Conv2d(8, 32, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+              )
+              (2): IgnoreConv2d(
+                (_layer): Conv2d(32, 32, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+              )
+              (3): IgnoreConv2d(
+                (_layer): ConvTranspose2d(32, 8, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+              )
+              (4): IgnoreConv2d(
+                (_layer): ConvTranspose2d(8, 3, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+              )
+            )
+            (activation_fns): ModuleList(
+              (0): Softplus(beta=1, threshold=20)
+              (1): Softplus(beta=1, threshold=20)
+              (2): Softplus(beta=1, threshold=20)
+              (3): Softplus(beta=1, threshold=20)
+            )
+          )
+        )
+      )
+    )
+  )
+)
+Number of trainable parameters: 18260
+Iter 0000 | Time 0.3203(0.3203) | Bit/dim 8.5470(8.5470) | Steps 41(41.00) | Grad Norm 0.5922(0.5922) | Total Time 1.00(1.00)
+Iter 0010 | Time 0.1362(0.2719) | Bit/dim 8.6064(8.5369) | Steps 41(41.00) | Grad Norm 0.5843(0.5933) | Total Time 1.00(1.00)
+Iter 0020 | Time 0.1352(0.2361) | Bit/dim 8.4873(8.5329) | Steps 41(41.00) | Grad Norm 0.5556(0.5871) | Total Time 1.00(1.00)
+Iter 0030 | Time 0.1361(0.2099) | Bit/dim 8.4219(8.5287) | Steps 41(41.00) | Grad Norm 0.5254(0.5778) | Total Time 1.00(1.00)
+Iter 0040 | Time 0.1351(0.1905) | Bit/dim 8.7531(8.5296) | Steps 41(41.00) | Grad Norm 0.5173(0.5669) | Total Time 1.00(1.00)
+Iter 0050 | Time 0.1368(0.1762) | Bit/dim 8.5039(8.5652) | Steps 41(41.00) | Grad Norm 0.4497(0.5461) | Total Time 1.00(1.00)
+/home/bahr/cdm/main.py
+#!/usr/bin/env python3
+import argparse
+import os
+import time
+import numpy as np
+
+import torch
+import torchvision.datasets as dset
+import torchvision.transforms as tforms
+
+import lib.utils as utils
+import lib.dataset as dataset
+
+import models.train_cnf as train_cnf
+import models.train_snf as train_snf
+
+
+# ============================================================================
+# Arguments general
+# ============================================================================
+torch.backends.cudnn.benchmark = True
+parser = argparse.ArgumentParser("Continuous Depth Models")
+
+parser.add_argument("--model", choices=["ffjord", "snf"], type=str)
+parser.add_argument("--data", choices=["piv","mnist", "cifar10"], type=str, default="mnist")
+
+parser.add_argument("--num_epochs", type=int, default=1000)
+parser.add_argument("--batch_size", type=int, default=100)
+parser.add_argument("--batch_size_schedule", type=str, default="", help="Increases the batchsize at every given epoch, dash separated.")
+parser.add_argument("--test_batch_size", type=int, default=200)
+parser.add_argument("--lr", type=float, default=1e-3)
+
+# ============================================================================
+# Arguments evaluation
+# ============================================================================
+parser.add_argument("--evaluation_numerical", type=bool, default=False)
+parser.add_argument("--save_recon_images_size", type=int, default=8)
+parser.add_argument("--experiment_name", type=str, default=None)
+parser.add_argument("--save", type=str, default=None)
+
+# ============================================================================
+# Arguments for ffjord
+# ============================================================================
+SOLVERS = ["dopri5", "bdf", "rk4", "midpoint", 'adams', 'explicit_adams']
+parser.add_argument("--dims", type=str, default="8,32,32,8")
+parser.add_argument("--strides", type=str, default="2,2,1,-2,-2")
+parser.add_argument("--num_blocks", type=int, default=1, help='Number of stacked CNFs.')
+
+parser.add_argument("--conv", type=eval, default=True, choices=[True, False])
+parser.add_argument(
+    "--layer_type", type=str, default="ignore",
+    choices=["ignore", "concat", "concat_v2", "squash", "concatsquash", "concatcoord", "hyper", "blend"]
+)
+parser.add_argument("--divergence_fn", type=str, default="approximate", choices=["brute_force", "approximate"])
+parser.add_argument(
+    "--nonlinearity", type=str, default="softplus", choices=["tanh", "relu", "softplus", "elu", "swish"]
+)
+parser.add_argument('--solver', type=str, default='dopri5', choices=SOLVERS)
+parser.add_argument('--atol', type=float, default=1e-5)
+parser.add_argument('--rtol', type=float, default=1e-5)
+parser.add_argument("--step_size", type=float, default=None, help="Optional fixed step size.")
+
+parser.add_argument('--test_solver', type=str, default=None, choices=SOLVERS + [None])
+parser.add_argument('--test_atol', type=float, default=None)
+parser.add_argument('--test_rtol', type=float, default=None)
+
+parser.add_argument("--imagesize", type=int, default=None)
+parser.add_argument("--alpha", type=float, default=1e-6)
+parser.add_argument('--time_length', type=float, default=1.0)
+parser.add_argument('--train_T', type=eval, default=True)
+
+parser.add_argument("--warmup_iters", type=float, default=1000)
+parser.add_argument("--weight_decay", type=float, default=0.0)
+parser.add_argument("--spectral_norm_niter", type=int, default=10)
+
+parser.add_argument("--add_noise", type=eval, default=True, choices=[True, False])
+parser.add_argument("--batch_norm", type=eval, default=False, choices=[True, False])
+parser.add_argument('--residual', type=eval, default=False, choices=[True, False])
+parser.add_argument('--autoencode', type=eval, default=False, choices=[True, False])
+parser.add_argument('--rademacher', type=eval, default=True, choices=[True, False])
+parser.add_argument('--spectral_norm', type=eval, default=False, choices=[True, False])
+parser.add_argument('--multiscale', type=eval, default=False, choices=[True, False])
+parser.add_argument('--parallel', type=eval, default=False, choices=[True, False])
+
+# Regularizations
+parser.add_argument('--l1int', type=float, default=None, help="int_t ||f||_1")
+parser.add_argument('--l2int', type=float, default=None, help="int_t ||f||_2")
+parser.add_argument('--dl2int', type=float, default=None, help="int_t ||f^T df/dt||_2")
+parser.add_argument('--JFrobint', type=float, default=None, help="int_t ||df/dx||_F")
+parser.add_argument('--JdiagFrobint', type=float, default=None, help="int_t ||df_i/dx_i||_F")
+parser.add_argument('--JoffdiagFrobint', type=float, default=None, help="int_t ||df/dx - df_i/dx_i||_F")
+
+parser.add_argument("--time_penalty", type=float, default=0, help="Regularization on the end_time.")
+parser.add_argument("--max_grad_norm", type=float, default=1e10,
+    help="Max norm of graidents (default is just stupidly high to avoid any clipping)")
+
+parser.add_argument("--begin_epoch", type=int, default=1)
+parser.add_argument("--resume", type=str, default=None)
+parser.add_argument("--val_freq", type=int, default=1)
+parser.add_argument("--log_freq", type=int, default=10)
+
+# ============================================================================
+# Arguments for snf
+# ============================================================================
+parser.add_argument('--z_size', type=int, default=64, metavar='ZSIZE', help='how many stochastic hidden units')
+parser.add_argument('--num_flows', type=int, default=4,metavar='NUM_FLOWS', help='Number of flow layers, ignored in absence of flows')
+parser.add_argument('--num_householder', type=int, default=8, metavar='NUM_HOUSEHOLDERS',help=""" For Householder Sylvester flow: Number of Householder matrices per flow. Ignored for other flow types.""")
+
+
+args = parser.parse_args()
+
+if args.model == "ffjord" and args.save == None:
+    args.save = "experiments/ffjord"
+elif args.model == "snf" and args.save == None:
+    args.save = "experiments/snf"
+
+if args.data == "piv" and args.experiment_name == None:
+    args.experiment_name = "piv"
+elif args.data == "mnist" and args.experiment_name == None:
+    args.experiment_name = "mnist"
+elif args.data == "cifar10" and args.experiment_name == None:
+    args.experiment_name = "cifar10"
+
+
+# logger
+try:
+    utils.makedirs(args.save)
+    logger = utils.get_logger(logpath=os.path.join(args.save, 'logs'), filepath=os.path.abspath(__file__))
+except:
+    print("Please choose --model [ffjord, snf]")
+    raise
+
+if args.layer_type == "blend":
+    logger.info("!! Setting time_length from None to 1.0 due to use of Blend layers.")
+    args.time_length = 1.0
+
+logger.info(args)
+
+
+# ============================================================================
+# Data handling
+# ============================================================================
+def add_noise(x):
+    """
+    [0, 1] -> [0, 255] -> add noise -> [0, 1]
+    """
+    if args.add_noise:
+        noise = x.new().resize_as_(x).uniform_()
+        x = x * 255 + noise
+        x = x / 256
+    return x
+
+
+def get_train_loader(train_set, epoch):
+    if args.batch_size_schedule != "":
+        epochs = [0] + list(map(int, args.batch_size_schedule.split("-")))
+        n_passed = sum(np.array(epochs) <= epoch)
+        current_batch_size = int(args.batch_size * n_passed)
+    else:
+        current_batch_size = args.batch_size
+    train_loader = torch.utils.data.DataLoader(
+        dataset=train_set, batch_size=current_batch_size, shuffle=True, drop_last=True, pin_memory=True
+    )
+    logger.info("===> Using batch size {}. Total {} iterations/epoch.".format(current_batch_size, len(train_loader)))
+    return train_loader
+
+
+def get_dataset(args):
+    trans = lambda im_size: tforms.Compose([tforms.Resize(im_size), tforms.ToTensor(), add_noise])
+
+    if args.data == "mnist":
+        im_dim = 1
+        im_size = 28 if args.imagesize is None else args.imagesize
+        train_set = dset.MNIST(root="./data", train=True, transform=trans(im_size), download=True)
+        test_set = dset.MNIST(root="./data", train=False, transform=trans(im_size), download=True)
+    elif args.data == "piv":
+        im_dim = 2
+        im_size = 32 if args.imagesize is None else args.imagesize
+        train_set = dataset.H5Dataset("/home/bahr/cdm/data/ISPIV_dataset/Batch_Training-Dataset_2Labels_S12_SynthImg_Alex.hdf5")
+        test_set = dataset.H5Dataset("/home/bahr/cdm/data/ISPIV_dataset/Batch_Validation-Dataset_2Labels_S12_SynthImg_Alex.hdf5")
+    elif args.data == "cifar10":
+        im_dim = 3
+        im_size = 32 if args.imagesize is None else args.imagesize
+        train_set = dset.CIFAR10(
+            root="./data", train=True, transform=tforms.Compose([
+                tforms.Resize(im_size),
+                tforms.RandomHorizontalFlip(),
+                tforms.ToTensor(),
+                add_noise,
+            ]), download=True
+        )
+        test_set = dset.CIFAR10(root="./data", train=False, transform=trans(im_size), download=True)
+
+    data_shape = (im_dim, im_size, im_size)
+    if not args.conv:
+        data_shape = (im_dim * im_size * im_size,)
+
+    test_loader = torch.utils.data.DataLoader(
+        dataset=test_set, batch_size=args.test_batch_size, shuffle=False, drop_last=True
+    )
+    return train_set, test_loader, data_shape
+
+
+# ============================================================================
+# Main
+# ============================================================================
+if __name__ == "__main__":
+
+    train_set, test_loader, data_shape = get_dataset(args)
+    train_loader = get_train_loader(train_set, args.num_epochs)
+
+    if args.model == "ffjord":
+        train_cnf.run(args, logger, train_loader, test_loader, data_shape)
+    elif args.model == "snf":
+        train_snf.run(args, logger, train_loader, test_loader, data_shape)
+
+Namespace(JFrobint=None, JdiagFrobint=None, JoffdiagFrobint=None, add_noise=True, alpha=1e-06, atol=1e-05, autoencode=False, batch_norm=False, batch_size=100, batch_size_schedule='', begin_epoch=1, conv=True, data='piv', dims='8,32,32,8', divergence_fn='approximate', dl2int=None, evaluation_numerical=False, experiment_name='piv', imagesize=None, l1int=None, l2int=None, layer_type='ignore', log_freq=10, lr=0.001, max_grad_norm=10000000000.0, model='ffjord', multiscale=False, nonlinearity='softplus', num_blocks=1, num_epochs=1000, num_flows=4, num_householder=8, parallel=False, rademacher=True, residual=False, resume=None, rtol=1e-05, save='experiments/ffjord', save_recon_images_size=16, solver='dopri5', spectral_norm=False, spectral_norm_niter=10, step_size=None, strides='2,2,1,-2,-2', test_atol=None, test_batch_size=200, test_rtol=None, test_solver=None, time_length=1.0, time_penalty=0, train_T=True, val_freq=1, warmup_iters=1000, weight_decay=0.0, z_size=64)
+===> Using batch size 100. Total 10000 iterations/epoch.
+SequentialFlow(
+  (chain): ModuleList(
+    (0): LogitTransform()
+    (1): CNF(
+      (odefunc): RegularizedODEfunc(
+        (odefunc): ODEfunc(
+          (diffeq): ODEnet(
+            (layers): ModuleList(
+              (0): IgnoreConv2d(
+                (_layer): Conv2d(2, 8, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+              )
+              (1): IgnoreConv2d(
+                (_layer): Conv2d(8, 32, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+              )
+              (2): IgnoreConv2d(
+                (_layer): Conv2d(32, 32, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+              )
+              (3): IgnoreConv2d(
+                (_layer): ConvTranspose2d(32, 8, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+              )
+              (4): IgnoreConv2d(
+                (_layer): ConvTranspose2d(8, 2, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+              )
+            )
+            (activation_fns): ModuleList(
+              (0): Softplus(beta=1, threshold=20)
+              (1): Softplus(beta=1, threshold=20)
+              (2): Softplus(beta=1, threshold=20)
+              (3): Softplus(beta=1, threshold=20)
+            )
+          )
+        )
+      )
+    )
+  )
+)
+Number of trainable parameters: 18003
+Iter 0000 | Time 0.3347(0.3347) | Bit/dim 9.8389(9.8389) | Steps 41(41.00) | Grad Norm 5.3292(5.3292) | Total Time 1.00(1.00)
+Iter 0010 | Time 0.1384(0.2834) | Bit/dim 9.8193(9.8366) | Steps 41(41.00) | Grad Norm 5.2903(5.3281) | Total Time 1.00(1.00)
+Iter 0020 | Time 0.1388(0.2454) | Bit/dim 9.7798(9.8287) | Steps 41(41.00) | Grad Norm 5.2727(5.3195) | Total Time 1.00(1.00)
+Iter 0030 | Time 0.1371(0.2172) | Bit/dim 9.7283(9.8120) | Steps 41(41.00) | Grad Norm 5.2225(5.3025) | Total Time 1.00(1.00)
+Iter 0040 | Time 0.1370(0.1963) | Bit/dim 9.6604(9.7821) | Steps 41(41.00) | Grad Norm 5.1728(5.2751) | Total Time 1.00(1.00)
+Iter 0050 | Time 0.1372(0.1809) | Bit/dim 9.5913(9.7393) | Steps 41(41.00) | Grad Norm 5.1874(5.2465) | Total Time 1.00(1.00)
+Iter 0060 | Time 0.1367(0.1695) | Bit/dim 9.4718(9.6833) | Steps 41(41.00) | Grad Norm 5.1791(5.2286) | Total Time 1.00(1.00)
+Iter 0070 | Time 0.1374(0.1610) | Bit/dim 9.3181(9.6057) | Steps 41(41.00) | Grad Norm 5.3384(5.2398) | Total Time 1.00(1.00)
+Iter 0080 | Time 0.1403(0.1549) | Bit/dim 9.1354(9.5033) | Steps 41(41.00) | Grad Norm 5.6235(5.3049) | Total Time 1.00(1.00)
+Iter 0090 | Time 0.1330(0.1491) | Bit/dim 8.8586(9.3645) | Steps 41(41.00) | Grad Norm 6.1867(5.4637) | Total Time 1.00(1.00)
+Iter 0100 | Time 0.1319(0.1446) | Bit/dim 8.5107(9.1792) | Steps 41(41.00) | Grad Norm 6.9139(5.7591) | Total Time 1.00(1.00)
+/home/bahr/cdm/main.py
+#!/usr/bin/env python3
+import argparse
+import os
+import time
+import numpy as np
+
+import torch
+import torchvision.datasets as dset
+import torchvision.transforms as tforms
+
+import lib.utils as utils
+import lib.dataset as dataset
+
+import models.train_cnf as train_cnf
+import models.train_snf as train_snf
+
+
+# ============================================================================
+# Arguments general
+# ============================================================================
+torch.backends.cudnn.benchmark = True
+parser = argparse.ArgumentParser("Continuous Depth Models")
+
+parser.add_argument("--model", choices=["ffjord", "snf"], type=str)
+parser.add_argument("--data", choices=["piv","mnist", "cifar10"], type=str, default="mnist")
+
+parser.add_argument("--num_epochs", type=int, default=1000)
+parser.add_argument("--batch_size", type=int, default=100)
+parser.add_argument("--batch_size_schedule", type=str, default="", help="Increases the batchsize at every given epoch, dash separated.")
+parser.add_argument("--test_batch_size", type=int, default=200)
+parser.add_argument("--lr", type=float, default=1e-3)
+
+# ============================================================================
+# Arguments evaluation
+# ============================================================================
+parser.add_argument("--evaluation_numerical", type=bool, default=False)
+parser.add_argument("--save_recon_images_size", type=int, default=8)
+parser.add_argument("--experiment_name", type=str, default=None)
+parser.add_argument("--save", type=str, default=None)
+
+# ============================================================================
+# Arguments for ffjord
+# ============================================================================
+SOLVERS = ["dopri5", "bdf", "rk4", "midpoint", 'adams', 'explicit_adams']
+parser.add_argument("--dims", type=str, default="8,32,32,8")
+parser.add_argument("--strides", type=str, default="2,2,1,-2,-2")
+parser.add_argument("--num_blocks", type=int, default=1, help='Number of stacked CNFs.')
+
+parser.add_argument("--conv", type=eval, default=True, choices=[True, False])
+parser.add_argument(
+    "--layer_type", type=str, default="ignore",
+    choices=["ignore", "concat", "concat_v2", "squash", "concatsquash", "concatcoord", "hyper", "blend"]
+)
+parser.add_argument("--divergence_fn", type=str, default="approximate", choices=["brute_force", "approximate"])
+parser.add_argument(
+    "--nonlinearity", type=str, default="softplus", choices=["tanh", "relu", "softplus", "elu", "swish"]
+)
+parser.add_argument('--solver', type=str, default='dopri5', choices=SOLVERS)
+parser.add_argument('--atol', type=float, default=1e-5)
+parser.add_argument('--rtol', type=float, default=1e-5)
+parser.add_argument("--step_size", type=float, default=None, help="Optional fixed step size.")
+
+parser.add_argument('--test_solver', type=str, default=None, choices=SOLVERS + [None])
+parser.add_argument('--test_atol', type=float, default=None)
+parser.add_argument('--test_rtol', type=float, default=None)
+
+parser.add_argument("--imagesize", type=int, default=None)
+parser.add_argument("--alpha", type=float, default=1e-6)
+parser.add_argument('--time_length', type=float, default=1.0)
+parser.add_argument('--train_T', type=eval, default=True)
+
+parser.add_argument("--warmup_iters", type=float, default=1000)
+parser.add_argument("--weight_decay", type=float, default=0.0)
+parser.add_argument("--spectral_norm_niter", type=int, default=10)
+
+parser.add_argument("--add_noise", type=eval, default=True, choices=[True, False])
+parser.add_argument("--batch_norm", type=eval, default=False, choices=[True, False])
+parser.add_argument('--residual', type=eval, default=False, choices=[True, False])
+parser.add_argument('--autoencode', type=eval, default=False, choices=[True, False])
+parser.add_argument('--rademacher', type=eval, default=True, choices=[True, False])
+parser.add_argument('--spectral_norm', type=eval, default=False, choices=[True, False])
+parser.add_argument('--multiscale', type=eval, default=False, choices=[True, False])
+parser.add_argument('--parallel', type=eval, default=False, choices=[True, False])
+
+# Regularizations
+parser.add_argument('--l1int', type=float, default=None, help="int_t ||f||_1")
+parser.add_argument('--l2int', type=float, default=None, help="int_t ||f||_2")
+parser.add_argument('--dl2int', type=float, default=None, help="int_t ||f^T df/dt||_2")
+parser.add_argument('--JFrobint', type=float, default=None, help="int_t ||df/dx||_F")
+parser.add_argument('--JdiagFrobint', type=float, default=None, help="int_t ||df_i/dx_i||_F")
+parser.add_argument('--JoffdiagFrobint', type=float, default=None, help="int_t ||df/dx - df_i/dx_i||_F")
+
+parser.add_argument("--time_penalty", type=float, default=0, help="Regularization on the end_time.")
+parser.add_argument("--max_grad_norm", type=float, default=1e10,
+    help="Max norm of graidents (default is just stupidly high to avoid any clipping)")
+
+parser.add_argument("--begin_epoch", type=int, default=1)
+parser.add_argument("--resume", type=str, default=None)
+parser.add_argument("--val_freq", type=int, default=1)
+parser.add_argument("--log_freq", type=int, default=10)
+
+# ============================================================================
+# Arguments for snf
+# ============================================================================
+parser.add_argument('--z_size', type=int, default=64, metavar='ZSIZE', help='how many stochastic hidden units')
+parser.add_argument('--num_flows', type=int, default=4,metavar='NUM_FLOWS', help='Number of flow layers, ignored in absence of flows')
+parser.add_argument('--num_householder', type=int, default=8, metavar='NUM_HOUSEHOLDERS',help=""" For Householder Sylvester flow: Number of Householder matrices per flow. Ignored for other flow types.""")
+
+
+args = parser.parse_args()
+
+if args.model == "ffjord" and args.save == None:
+    args.save = "experiments/ffjord"
+elif args.model == "snf" and args.save == None:
+    args.save = "experiments/snf"
+
+if args.data == "piv" and args.experiment_name == None:
+    args.experiment_name = "piv"
+elif args.data == "mnist" and args.experiment_name == None:
+    args.experiment_name = "mnist"
+elif args.data == "cifar10" and args.experiment_name == None:
+    args.experiment_name = "cifar10"
+
+
+# logger
+try:
+    utils.makedirs(args.save)
+    logger = utils.get_logger(logpath=os.path.join(args.save, 'logs'), filepath=os.path.abspath(__file__))
+except:
+    print("Please choose --model [ffjord, snf]")
+    raise
+
+if args.layer_type == "blend":
+    logger.info("!! Setting time_length from None to 1.0 due to use of Blend layers.")
+    args.time_length = 1.0
+
+logger.info(args)
+
+
+# ============================================================================
+# Data handling
+# ============================================================================
+def add_noise(x):
+    """
+    [0, 1] -> [0, 255] -> add noise -> [0, 1]
+    """
+    if args.add_noise:
+        noise = x.new().resize_as_(x).uniform_()
+        x = x * 255 + noise
+        x = x / 256
+    return x
+
+
+def get_train_loader(train_set, epoch):
+    if args.batch_size_schedule != "":
+        epochs = [0] + list(map(int, args.batch_size_schedule.split("-")))
+        n_passed = sum(np.array(epochs) <= epoch)
+        current_batch_size = int(args.batch_size * n_passed)
+    else:
+        current_batch_size = args.batch_size
+    train_loader = torch.utils.data.DataLoader(
+        dataset=train_set, batch_size=current_batch_size, shuffle=True, drop_last=True, pin_memory=True
+    )
+    logger.info("===> Using batch size {}. Total {} iterations/epoch.".format(current_batch_size, len(train_loader)))
+    return train_loader
+
+
+def get_dataset(args):
+    trans = lambda im_size: tforms.Compose([tforms.Resize(im_size), tforms.ToTensor(), add_noise])
+
+    if args.data == "mnist":
+        im_dim = 1
+        im_size = 28 if args.imagesize is None else args.imagesize
+        train_set = dset.MNIST(root="./data", train=True, transform=trans(im_size), download=True)
+        test_set = dset.MNIST(root="./data", train=False, transform=trans(im_size), download=True)
+    elif args.data == "piv":
+        im_dim = 2
+        im_size = 32 if args.imagesize is None else args.imagesize
+        train_set = dataset.H5Dataset("/home/bahr/cdm/data/ISPIV_dataset/Batch_Training-Dataset_2Labels_S12_SynthImg_Alex.hdf5")
+        test_set = dataset.H5Dataset("/home/bahr/cdm/data/ISPIV_dataset/Batch_Validation-Dataset_2Labels_S12_SynthImg_Alex.hdf5")
+    elif args.data == "cifar10":
+        im_dim = 3
+        im_size = 32 if args.imagesize is None else args.imagesize
+        train_set = dset.CIFAR10(
+            root="./data", train=True, transform=tforms.Compose([
+                tforms.Resize(im_size),
+                tforms.RandomHorizontalFlip(),
+                tforms.ToTensor(),
+                add_noise,
+            ]), download=True
+        )
+        test_set = dset.CIFAR10(root="./data", train=False, transform=trans(im_size), download=True)
+
+    data_shape = (im_dim, im_size, im_size)
+    if not args.conv:
+        data_shape = (im_dim * im_size * im_size,)
+
+    test_loader = torch.utils.data.DataLoader(
+        dataset=test_set, batch_size=args.test_batch_size, shuffle=False, drop_last=True
+    )
+    return train_set, test_loader, data_shape
+
+
+# ============================================================================
+# Main
+# ============================================================================
+if __name__ == "__main__":
+
+    train_set, test_loader, data_shape = get_dataset(args)
+    train_loader = get_train_loader(train_set, args.num_epochs)
+
+    if args.model == "ffjord":
+        train_cnf.run(args, logger, train_loader, test_loader, data_shape)
+    elif args.model == "snf":
+        train_snf.run(args, logger, train_loader, test_loader, data_shape)
+
+Namespace(JFrobint=None, JdiagFrobint=None, JoffdiagFrobint=None, add_noise=True, alpha=1e-06, atol=1e-05, autoencode=False, batch_norm=False, batch_size=100, batch_size_schedule='', begin_epoch=1, conv=True, data='mnist', dims='8,32,32,8', divergence_fn='approximate', dl2int=None, evaluation_numerical=False, experiment_name='mnist', imagesize=None, l1int=None, l2int=None, layer_type='ignore', log_freq=10, lr=0.001, max_grad_norm=10000000000.0, model='ffjord', multiscale=False, nonlinearity='softplus', num_blocks=1, num_epochs=1000, num_flows=4, num_householder=8, parallel=False, rademacher=True, residual=False, resume=None, rtol=1e-05, save='experiments/ffjord', save_recon_images_size=16, solver='dopri5', spectral_norm=False, spectral_norm_niter=10, step_size=None, strides='2,2,1,-2,-2', test_atol=None, test_batch_size=200, test_rtol=None, test_solver=None, time_length=1.0, time_penalty=0, train_T=True, val_freq=1, warmup_iters=1000, weight_decay=0.0, z_size=64)
+===> Using batch size 100. Total 600 iterations/epoch.
+SequentialFlow(
+  (chain): ModuleList(
+    (0): LogitTransform()
+    (1): CNF(
+      (odefunc): RegularizedODEfunc(
+        (odefunc): ODEfunc(
+          (diffeq): ODEnet(
+            (layers): ModuleList(
+              (0): IgnoreConv2d(
+                (_layer): Conv2d(1, 8, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+              )
+              (1): IgnoreConv2d(
+                (_layer): Conv2d(8, 32, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+              )
+              (2): IgnoreConv2d(
+                (_layer): Conv2d(32, 32, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+              )
+              (3): IgnoreConv2d(
+                (_layer): ConvTranspose2d(32, 8, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+              )
+              (4): IgnoreConv2d(
+                (_layer): ConvTranspose2d(8, 1, kernel_size=(4, 4), stride=(2, 2), padding=(1, 1))
+              )
+            )
+            (activation_fns): ModuleList(
+              (0): Softplus(beta=1, threshold=20)
+              (1): Softplus(beta=1, threshold=20)
+              (2): Softplus(beta=1, threshold=20)
+              (3): Softplus(beta=1, threshold=20)
+            )
+          )
+        )
+      )
+    )
+  )
+)
+Number of trainable parameters: 17746
+Iter 0000 | Time 0.3037(0.3037) | Bit/dim 27.3929(27.3929) | Steps 41(41.00) | Grad Norm 15.2258(15.2258) | Total Time 1.00(1.00)
+Iter 0010 | Time 0.1224(0.2566) | Bit/dim 27.5958(27.4150) | Steps 41(41.00) | Grad Norm 15.6344(15.2149) | Total Time 1.00(1.00)
+Iter 0020 | Time 0.1222(0.2214) | Bit/dim 27.4856(27.4262) | Steps 41(41.00) | Grad Norm 15.4924(15.2430) | Total Time 1.00(1.00)
+Iter 0030 | Time 0.1222(0.1956) | Bit/dim 27.3813(27.4200) | Steps 41(41.00) | Grad Norm 15.0250(15.2411) | Total Time 1.00(1.00)
+Iter 0040 | Time 0.1223(0.1764) | Bit/dim 27.1877(27.3776) | Steps 41(41.00) | Grad Norm 15.0464(15.2090) | Total Time 1.00(1.00)

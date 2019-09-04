@@ -69,7 +69,11 @@ class VAE(nn.Module):
         # extract model settings from args
         self.z_size = args.z_size
         self.input_size = data_shape
-        self.last_kernel_size = 8
+
+        if args.data == "piv" or args.data == "cifar10":
+            self.last_kernel_size = 8
+        elif args.data == "mnist":
+            self.last_kernel_size = 7
 
         self.q_z_nn, self.q_z_mean, self.q_z_var = self.create_encoder()
         self.p_x_nn, self.p_x_mean = self.create_decoder()

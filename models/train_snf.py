@@ -22,7 +22,7 @@ def fc_train(recon_images, labels, model_fc, optimizer_fc):
     optimizer_fc.step()
 
 
-def run(args, logger, train_loader, test_loader, data_shape):
+def run(args, logger, train_loader, validation_loader, data_shape):
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -46,6 +46,7 @@ def run(args, logger, train_loader, test_loader, data_shape):
     print(model_fc)
 
     beta = 0.01
+    break_training = 10
 
     for epoch in range(args.num_epochs):
         print('Epoch: {} \tBeta: {}'.format(epoch,beta))
@@ -54,6 +55,8 @@ def run(args, logger, train_loader, test_loader, data_shape):
         num_data = 0
 
         for idx_count, data in enumerate(train_loader):
+            if idx_count > break_training:
+                break
 
             if args.data == "piv":
                 x, y = data['ComImages'].float(), data['AllGenDetails'].float()
@@ -90,5 +93,5 @@ def run(args, logger, train_loader, test_loader, data_shape):
             #  fc_train(recon_images, y)
 
         beta += 0.01
-        evaluation.save_recon_images(args, model, validation_loader)
+        evaluation.save_recon_images(args, model, validation_loader, data_shape)
 
