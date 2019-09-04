@@ -126,7 +126,7 @@ def create_model(args, data_shape, regularization_fns):
 
 def run(args, logger, train_loader, test_loader, data_shape):
 
-    # get deivce
+    # get device
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     cvt = lambda x: x.type(torch.float32).to(device, non_blocking=True)
 
@@ -157,9 +157,6 @@ def run(args, logger, train_loader, test_loader, data_shape):
 
     if torch.cuda.is_available():
         model = torch.nn.DataParallel(model).cuda()
-
-    # For visualization.
-    fixed_z = cvt(torch.randn(100, *data_shape))
 
     time_meter = utils.RunningAverageMeter(0.97)
     loss_meter = utils.RunningAverageMeter(0.97)
@@ -230,7 +227,7 @@ def run(args, logger, train_loader, test_loader, data_shape):
 
             itr += 1
 
-        # compute test los
+        # Evaluate and save model
         if epoch % args.val_freq == 0 and args.evaluation_numerical:
             model.eval()
             with torch.no_grad():
@@ -253,7 +250,6 @@ def run(args, logger, train_loader, test_loader, data_shape):
                 logger.info("Epoch {:04d} | Time {:.4f}, Bit/dim {:.4f}".format(epoch, time.time() - start, loss))
                 if loss < best_loss:
                     best_loss = loss
-                    utils.makedirs(args.save)
                     torch.save({
                         "args": args,
                         "state_dict": model.module.state_dict() if torch.cuda.is_available() else model.state_dict(),
@@ -262,8 +258,5 @@ def run(args, logger, train_loader, test_loader, data_shape):
 
         # visualize samples and density
         evaluation.save_recon_images(args, model, test_loader, data_shape)
-        #  with torch.no_grad():
-            #  fig_filename = os.path.join(args.save, "figs", "{:04d}.jpg".format(epoch))
-            #  utils.makedirs(os.path.dirname(fig_filename))
-            #  generated_samples = model(fixed_z, reverse=True).view(-1, *data_shape)
-        #      save_image(generated_samples[0], fig_filename, nrow=10)
+        evaluation.save_fixed_z_image(args, model, data_shape)
+
