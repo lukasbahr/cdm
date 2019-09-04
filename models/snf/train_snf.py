@@ -4,6 +4,7 @@ import torch
 
 import models.snf.lib_snf.module as module
 import models.lib.evaluation as evaluation
+import models.snf.lib_snf.loss as loss_function
 
 def fc_train(recon_images, labels, model_fc, optimizer_fc):
     model_fc.train()
@@ -20,7 +21,7 @@ def fc_train(recon_images, labels, model_fc, optimizer_fc):
     optimizer_fc.step()
 
 
-def run(args, logger, train_laoder, test_loader, data_shape):
+def run(args, logger, train_loader, test_loader, data_shape):
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -31,7 +32,7 @@ def run(args, logger, train_laoder, test_loader, data_shape):
 
     print('Running on:' + str(device) + ' ' + str(device_name))
 
-    model = module.HouseholderSylvesterVAE(args)
+    model = module.HouseholderSylvesterVAE(args, data_shape)
     model_fc = module.VectorModel()
 
     model.to(device)
@@ -51,7 +52,7 @@ def run(args, logger, train_laoder, test_loader, data_shape):
         model.train()
         num_data = 0
 
-        for _, data in enumerate(train_loader):
+        for idx_count, data in enumerate(train_loader):
 
             if args.data == "piv":
                 x, y = data['ComImages'].float(), data['AllGenDetails'].float()
@@ -74,18 +75,18 @@ def run(args, logger, train_laoder, test_loader, data_shape):
             kl = kl.item()
             num_data += len(data)
 
-            if i%20==0:
+            if idx_count%20==0:
                 print('Epoch: {:3d} [{:5d}/{:5d} ({:2.0f}%)] \tLoss: {:11.6f}\trec:{:11.6f} \tkl: {:11.6f}'.format(
                             epoch,
                             num_data,
                             len(train_loader.sampler),
-                            100.*i/len(train_loader),
+                            100.*idx_count/len(train_loader),
                             loss.item(),
                             rec,
                             kl)
                         )
 
-            fc_train(recon_images, labels)
+            #  fc_train(recon_images, y)
 
         beta += 0.01
         evaluation.save_recon_images(args, model, validation_loader)
