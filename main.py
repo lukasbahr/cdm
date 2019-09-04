@@ -30,6 +30,7 @@ parser.add_argument("--batch_size_schedule", type=str, default="", help="Increas
 parser.add_argument("--test_batch_size", type=int, default=200)
 parser.add_argument("--lr", type=float, default=1e-3)
 
+
 # ============================================================================
 # Arguments evaluation
 # ============================================================================
@@ -120,6 +121,16 @@ elif args.data == "mnist" and args.experiment_name == None:
     args.experiment_name = "mnist"
 elif args.data == "cifar10" and args.experiment_name == None:
     args.experiment_name = "cifar10"
+
+if torch.cuda.is_available:
+    device_name = torch.cuda.get_device_name(0)
+    device = torch.device("cuda:0")
+else:
+    device_name = None
+    device = torch.device("cpu")
+
+print('Running on:' + str(device) + ' ' + str(device_name))
+
 
 
 # logger

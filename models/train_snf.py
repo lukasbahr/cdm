@@ -26,13 +26,6 @@ def run(args, logger, train_loader, validation_loader, data_shape):
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    if torch.cuda.is_available:
-        device_name = torch.cuda.get_device_name(0)
-    else:
-        device_name = None
-
-    print('Running on:' + str(device) + ' ' + str(device_name))
-
     model = module.HouseholderSylvesterVAE(args, data_shape)
     model_fc = module.VectorModel()
 
@@ -60,10 +53,10 @@ def run(args, logger, train_loader, validation_loader, data_shape):
 
             if args.data == "piv":
                 x, y = data['ComImages'].float(), data['AllGenDetails'].float()
-                x = x.to(torch.device("cuda:0"))
+                x = x.to(device)
             else:
                 x, y = data
-                x = x.to(torch.device("cuda:0"))
+                x = x.to(device)
 
             optimizer.zero_grad()
 

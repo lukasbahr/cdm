@@ -10,15 +10,18 @@ def save_recon_images(args, model, validation_loader, data_shape):
     """Saves reconstructed images to samples folder."""
 
 
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
     validation_set_enumerate = enumerate(validation_loader)
 
     _, data = next(validation_set_enumerate)
 
     if args.data == "piv":
-        x, y = data['ComImages'].to(torch.device("cuda:0")) ,data['AllGenDetails']
+        x, y = data['ComImages'], data['AllGenDetails']
+        x = x.to(device)
     else:
         x, y = data
-        x = x.to(torch.device("cuda:0"))
+        x = x.to(device)
 
     if args.model == "ffjord":
         generated_sample = model(x, reverse=True)
