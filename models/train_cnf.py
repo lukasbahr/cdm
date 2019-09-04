@@ -19,7 +19,6 @@ from lib_ffjord.train_misc import add_spectral_norm, spectral_norm_power_iterati
 from lib_ffjord.train_misc import create_regularization_fns, get_regularization, append_regularization_to_log
 
 
-
 def update_lr(args, optimizer, itr):
     iter_frac = min(float(itr + 1) / max(args.warmup_iters, 1), 1.0)
     lr = args.lr * iter_frac
@@ -172,9 +171,12 @@ def run(args, logger, train_loader, test_loader, data_shape):
 
     best_loss = float("inf")
     itr = 0
+    break_training = 20
     for epoch in range(args.begin_epoch, args.num_epochs + 1):
         model.train()
         for idx_count, (data) in enumerate(train_loader):
+            if idx_count > break_training:
+                break
 
             if args.data == 'piv':
                 x, y = data['ComImages'],data['AllGenDetails']
@@ -229,7 +231,7 @@ def run(args, logger, train_loader, test_loader, data_shape):
             itr += 1
 
         # compute test los
-        if epoch % args.val_freq == 0 and args.evaluation:
+        if epoch % args.val_freq == 0 and args.evaluation_numerical:
             model.eval()
             with torch.no_grad():
                 start = time.time()
@@ -259,7 +261,7 @@ def run(args, logger, train_loader, test_loader, data_shape):
                     }, os.path.join(args.save, "checkpt.pth"))
 
         # visualize samples and density
-        evaluation.save_recon_images(args, model, test_loader)
+        evaluation.save_recon_images(args, model, test_loader, data_shape)
         #  with torch.no_grad():
             #  fig_filename = os.path.join(args.save, "figs", "{:04d}.jpg".format(epoch))
             #  utils.makedirs(os.path.dirname(fig_filename))
