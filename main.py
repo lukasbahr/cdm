@@ -30,7 +30,6 @@ parser.add_argument("--batch_size_schedule", type=str, default="", help="Increas
 parser.add_argument("--test_batch_size", type=int, default=200)
 parser.add_argument("--lr", type=float, default=1e-3)
 
-
 # ============================================================================
 # Arguments evaluation
 # ============================================================================
@@ -129,17 +128,10 @@ else:
     device_name = None
     device = torch.device("cpu")
 
-print('Running on:' + str(device) + ' ' + str(device_name))
-
-
-
 # logger
-try:
-    utils.makedirs(args.save)
-    logger = utils.get_logger(logpath=os.path.join(args.save, 'logs'), filepath=os.path.abspath(__file__))
-except:
-    print("Please choose --model [ffjord, snf]")
-    raise
+utils.makedirs(args.save)
+logger = utils.get_logger(logpath=os.path.join(args.save, 'logs'), filepath=os.path.abspath(__file__))
+logger.info('Running on:' + str(device) + ' ' + str(device_name))
 
 if args.layer_type == "blend":
     logger.info("!! Setting time_length from None to 1.0 due to use of Blend layers.")
