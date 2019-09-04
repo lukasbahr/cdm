@@ -63,13 +63,12 @@ class VAE(nn.Module):
     Can be used as a base class for VAE's with normalizing flows.
     """
 
-    def __init__(self, args):
+    def __init__(self, args, data_shape):
         super(VAE, self).__init__()
 
         # extract model settings from args
         self.z_size = args.z_size
-        self.input_size = args.input_size
-
+        self.input_size = data_shape
         self.last_kernel_size = 8
 
         self.q_z_nn, self.q_z_mean, self.q_z_var = self.create_encoder()
@@ -189,8 +188,8 @@ class OrthogonalSylvesterVAE(VAE):
     Variational auto-encoder with orthogonal flows in the encoder.
     """
 
-    def __init__(self, args):
-        super(OrthogonalSylvesterVAE, self).__init__(args)
+    def __init__(self, args, data_shape):
+        super(OrthogonalSylvesterVAE, self).__init__(args, data_shape)
 
         # Initialize log-det-jacobian to zero
         self.log_det_j = 0.
@@ -363,8 +362,8 @@ class HouseholderSylvesterVAE(VAE):
     Variational auto-encoder with householder sylvester flows in the encoder.
     """
 
-    def __init__(self, args):
-        super(HouseholderSylvesterVAE, self).__init__(args)
+    def __init__(self, args, data_shape):
+        super(HouseholderSylvesterVAE, self).__init__(args, data_shape)
 
         # Initialize log-det-jacobian to zero
         self.log_det_j = 0.
