@@ -8,11 +8,11 @@ import torch
 import torchvision.datasets as dset
 import torchvision.transforms as tforms
 
-import models.lib.utils as utils
-import models.lib.dataset as dataset
+import lib.utils as utils
+import lib.dataset as dataset
 
-import models.ffjord.train_cnf as train_cnf
-import models.snf.train_snf as train_snf
+import models.train_cnf as train_cnf
+import models.train_snf as train_snf
 
 
 # ============================================================================
