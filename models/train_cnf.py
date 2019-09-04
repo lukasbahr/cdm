@@ -7,9 +7,9 @@ import torch
 import torch.optim as optim
 
 import lib.evaluation as evaluation
+import lib.utils as utils
 
 import lib_ffjord.layers as layers
-import lib_ffjord.utils as utils
 import lib_ffjord.odenvp as odenvp
 import lib_ffjord.multiscale_parallel as multiscale_parallel
 
@@ -124,7 +124,7 @@ def create_model(args, data_shape, regularization_fns):
     return model
 
 
-def run(args, logger, train_loader, test_loader, data_shape):
+def run(args, logger, train_loader, validation_loader, data_shape):
 
     # get device
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -172,8 +172,8 @@ def run(args, logger, train_loader, test_loader, data_shape):
     for epoch in range(args.begin_epoch, args.num_epochs + 1):
         model.train()
         for idx_count, (data) in enumerate(train_loader):
-            if idx_count > break_training:
-                break
+            #  if idx_count > break_training:
+                #  break
 
             if args.data == 'piv':
                 x, y = data['ComImages'],data['AllGenDetails']
@@ -228,13 +228,13 @@ def run(args, logger, train_loader, test_loader, data_shape):
             itr += 1
 
         # Evaluate and save model
-        if epoch % args.val_freq == 0 and args.evaluation_numerical:
+        if epoch % args.val_freq == 0:
             model.eval()
             with torch.no_grad():
                 start = time.time()
                 logger.info("validating...")
                 losses = []
-                for (data) in test_loader:
+                for (data) in validation_loader:
                     if args.data == 'piv':
                         x, y = data['ComImages'],data['AllGenDetails']
                     else:
@@ -252,11 +252,11 @@ def run(args, logger, train_loader, test_loader, data_shape):
                     best_loss = loss
                     torch.save({
                         "args": args,
-                        "state_dict": model.module.state_dict() if torch.cuda.is_available() else model.state_dict(),
+                        "state_dict":  model.state_dict(),
                         "optim_state_dict": optimizer.state_dict(),
                     }, os.path.join(args.save, "checkpt.pth"))
 
         # visualize samples and density
-        evaluation.save_recon_images(args, model, test_loader, data_shape)
+        evaluation.save_recon_images(args, model, validation_loader, data_shape)
         evaluation.save_fixed_z_image(args, model, data_shape)
 
