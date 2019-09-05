@@ -7,23 +7,9 @@ import os
 
 import lib_snf.module as module
 import lib_snf.loss as loss_function
-
 import lib.evaluation as evaluation
 import lib.utils as utils
-
-def fc_train(recon_images, labels, model_fc, optimizer_fc):
-    model_fc.train()
-
-    optimizer_fc.zero_grad()
-
-    out = model_fc(recon_images)
-
-    loss_func = nn.MSELoss()
-    loss = loss_func(out, labels)
-
-    loss.backward()
-
-    optimizer_fc.step()
+import models.resnet_pretrained as resnet_pretrained
 
 
 def run(args, logger, train_loader, validation_loader, data_shape):
@@ -31,13 +17,21 @@ def run(args, logger, train_loader, validation_loader, data_shape):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     model = module.HouseholderSylvesterVAE(args, data_shape)
-    model_fc = module.VectorModel()
 
     model.to(device)
-    model_fc.to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    optimizer_fc = torch.optim.Adam(model_fc.parameters(), 0.001)
+    start_epoch = 0
+
+    # restore parameters
+    if args.resume is not None:
+        checkpt = torch.load(args.resume, map_location=lambda storage, loc: storage)
+        model.load_state_dict(checkpt["state_dict"])
+        optimizer.load_state_dict(checkpt["optim_state_dict"])
+        args = checkpt["args"]
+        start_epoch = checkpt["epoch"] + 1
+        logger.info("Resuming at epoch {} with args {}.".format(start_epoch,
+            args))
 
     time_meter = utils.RunningAverageMeter(0.97)
 
@@ -46,7 +40,7 @@ def run(args, logger, train_loader, validation_loader, data_shape):
 
     best_loss = float("inf")
     itr = 0
-    for epoch in range(args.num_epochs):
+    for epoch in range(start_epoch, args.num_epochs):
         logger.info('Epoch: {} \tBeta: {}'.format(epoch,beta))
 
         model.train()
@@ -110,6 +104,8 @@ def run(args, logger, train_loader, validation_loader, data_shape):
                     loss, rec, kl = loss_function.binary_loss_function(recon_images, x, z_mu, z_var, z0, z_k, ldj, beta)
                     losses.append(loss.item())
 
+                    #  loss_vec_recon_images, loss_vec_images_recon_images = resnet_pretrained.run(args, resnet, data, recon_images, y, data_shape)
+
                 loss = np.mean(losses)
                 logger.info("Epoch {:04d} | Time {:.4f} | Loss {:.4f}".format(epoch, time.time() - start, loss))
                 if loss < best_loss:
@@ -117,11 +113,11 @@ def run(args, logger, train_loader, validation_loader, data_shape):
                     utils.makedirs(args.save)
                     torch.save({
                         "args": args,
+                        "epoch": epoch,
                         "state_dict":  model.state_dict(),
                         "optim_state_dict": optimizer.state_dict(),
                     }, os.path.join(args.save, "checkpt.pth"))
-
-            #  fc_train(recon_images, y)
+                    logger.info("Saving model at epoch {}.".format(epoch))
 
         beta += 0.01
 
