@@ -148,9 +148,9 @@ name = 'ISPIV_ResNet_3x3_full_preactivation_IPI_D4'
 training_begin = time.strftime("%d-%m-%y_%H:%M:%S")
 batchSize = 1000
 
-training_set = H5Dataset('/home/giganto/Nets/ISPIV/ISPIV_Datasets/Batch_Training-Dataset_2Labels_Inf_dp_S10_CL.hdf5')
+training_set = H5Dataset('/home/bahr/cdm/data/ISPIV_dataset/Batch_Training-Dataset_2Labels_S12_SynthImg_Alex.hdf5')
 training_generator = torch.utils.data.DataLoader(training_set, batch_size=batchSize, shuffle=True, num_workers=1)
-validation_set = H5Dataset('/home/giganto/Nets/ISPIV/ISPIV_Datasets/Batch_Validation-Dataset_2Labels_Inf_dp_S10_CL.hdf5')
+validation_set = H5Dataset('/home/bahr/cdm/data/ISPIV_dataset/Batch_Validation-Dataset_2Labels_S12_SynthImg_Alex.hdf5')
 validation_generator = torch.utils.data.DataLoader(validation_set, batch_size=batchSize, shuffle=True, num_workers=1)
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -170,7 +170,7 @@ print(neural_net)
 max_epochs = 200
 start_epoch = 0
 
-recover = True
+recover = False
 if recover:
     checkpoint = torch.load("/home/giganto/Nets/ISPIV/PyTorch/Checkpoints/ISPIV_ResNet_3x3_full_preactivation_IPI_D4_20-06-19_10:18:02.tar")
     neural_net.load_state_dict(checkpoint['model_state_dict'])
@@ -183,7 +183,7 @@ if recover:
 
 print("starting training")
 
-log_file = open('/home/giganto/Nets/ISPIV/PyTorch/Logs/'+name+'_'+training_begin+'.txt', "w")
+log_file = open('/home/bahr/cdm/resnet/'+name+'_'+training_begin+'.txt', "w")
 
 # Loop over epochs
 for epoch in range(start_epoch, max_epochs):
@@ -233,6 +233,6 @@ for epoch in range(start_epoch, max_epochs):
             'model_state_dict': neural_net.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
             'scheduler_state_dict': scheduler.state_dict()
-        }, '/home/giganto/Nets/ISPIV/PyTorch/Checkpoints/'+name+'_'+training_begin+'.tar')
+        }, '/home/bahr/cdm/resnet/'+name+'_'+training_begin+'.pth')
     log_file.write("epoch: "+str(epoch)+" training_loss: "+str(last_training_loss.item())+" validation loss: "+str(last_validation_loss.item())+"\n")
     log_file.flush()
