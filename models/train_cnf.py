@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import argparse
 import os
 import time
@@ -17,6 +19,8 @@ from lib_ffjord.train_misc import standard_normal_logprob
 from lib_ffjord.train_misc import set_cnf_options, count_nfe, count_parameters, count_total_time
 from lib_ffjord.train_misc import add_spectral_norm, spectral_norm_power_iteration
 from lib_ffjord.train_misc import create_regularization_fns, get_regularization, append_regularization_to_log
+
+import models.resnet_pretrained as resnet_pretrained
 
 
 def update_lr(args, optimizer, itr):
@@ -143,17 +147,23 @@ def run(args, logger, train_loader, validation_loader, data_shape):
     # optimizer
     optimizer = optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
+    start_epoch = 0
+
     # restore parameters
     if args.resume is not None:
         checkpt = torch.load(args.resume, map_location=lambda storage, loc: storage)
         model.load_state_dict(checkpt["state_dict"])
         if "optim_state_dict" in checkpt.keys():
-            optimizer.load_state_dict(checkpt["optim_state_dict"])
-            # Manually move optimizer state to device.
-            for state in optimizer.state.values():
-                for k, v in state.items():
-                    if torch.is_tensor(v):
-                        state[k] = cvt(v)
+                optimizer.load_state_dict(checkpt["optim_state_dict"])
+                # Manually move optimizer state to device.
+                for state in optimizer.state.values():
+                    for k, v in state.items():
+                        if torch.is_tensor(v):
+                            state[k] = cvt(v)
+        args = checkpt["args"]
+        start_epoch = checkpt["epoch"] + 1
+        logger.info("Resuming at epoch {} with args {}.".format(start_epoch,
+            args))
 
     if torch.cuda.is_available():
         model = torch.nn.DataParallel(model).cuda()
@@ -169,7 +179,8 @@ def run(args, logger, train_loader, validation_loader, data_shape):
     best_loss = float("inf")
     itr = 0
     break_training = 20
-    for epoch in range(args.begin_epoch, args.num_epochs + 1):
+    for epoch in range(start_epoch, args.num_epochs):
+        logger.info("Epoch {}".format(epoch))
         model.train()
         for idx_count, (data) in enumerate(train_loader):
             #  if idx_count > break_training:
@@ -189,6 +200,7 @@ def run(args, logger, train_loader, validation_loader, data_shape):
 
             # cast data and move to device
             x = cvt(x)
+
             # compute loss
             loss = compute_bits_per_dim(x, model)
             if regularization_coeffs:
@@ -246,15 +258,19 @@ def run(args, logger, train_loader, validation_loader, data_shape):
                     loss = compute_bits_per_dim(x, model)
                     losses.append(loss.item())
 
+                    #  loss_vec_recon_images, loss_vec_images_recon_images = resnet_pretrained.run(args, resnet, data, recon_images, y, data_shape)
+
                 loss = np.mean(losses)
                 logger.info("Epoch {:04d} | Time {:.4f}, Bit/dim {:.4f}".format(epoch, time.time() - start, loss))
                 if loss < best_loss:
                     best_loss = loss
                     torch.save({
                         "args": args,
-                        "state_dict":  model.state_dict(),
+                        "epoch": epoch,
+                        "state_dict": model.module.state_dict() if torch.cuda.is_available() else model.state_dict(),
                         "optim_state_dict": optimizer.state_dict(),
                     }, os.path.join(args.save, "checkpt.pth"))
+                    logger.info("Saving model at epoch {}.".format(epoch))
 
         # visualize samples and density
         evaluation.save_recon_images(args, model, validation_loader, data_shape)
