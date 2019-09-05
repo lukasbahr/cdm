@@ -240,39 +240,41 @@ def run(args, logger, train_loader, validation_loader, data_shape):
             itr += 1
 
         # Evaluate and save model
-        if epoch % args.val_freq == 0:
-            model.eval()
-            with torch.no_grad():
-                start = time.time()
-                logger.info("validating...")
-                losses = []
-                for (data) in validation_loader:
-                    if args.data == 'piv':
-                        x, y = data['ComImages'],data['AllGenDetails']
-                    else:
-                        x, y = data
+        if arg.evaluate:
+            if epoch % args.val_freq == 0:
+                model.eval()
+                with torch.no_grad():
+                    start = time.time()
+                    logger.info("validating...")
+                    losses = []
+                    for (data) in validation_loader:
+                        if args.data == 'piv':
+                            x, y = data['ComImages'],data['AllGenDetails']
+                        else:
+                            x, y = data
 
-                    if not args.conv:
-                        x = x.view(x.shape[0], -1)
-                    x = cvt(x)
-                    loss = compute_bits_per_dim(x, model)
-                    losses.append(loss.item())
+                        if not args.conv:
+                            x = x.view(x.shape[0], -1)
+                        x = cvt(x)
+                        loss = compute_bits_per_dim(x, model)
+                        losses.append(loss.item())
 
-                    #  loss_vec_recon_images, loss_vec_images_recon_images = resnet_pretrained.run(args, resnet, data, recon_images, y, data_shape)
+                        #  loss_vec_recon_images, loss_vec_images_recon_images =
+                        #  resnet_pretrained.run(args, logger, data, recon_images, y, data_shape)
 
-                loss = np.mean(losses)
-                logger.info("Epoch {:04d} | Time {:.4f}, Bit/dim {:.4f}".format(epoch, time.time() - start, loss))
-                if loss < best_loss:
-                    best_loss = loss
-                    torch.save({
-                        "args": args,
-                        "epoch": epoch,
-                        "state_dict": model.module.state_dict() if torch.cuda.is_available() else model.state_dict(),
-                        "optim_state_dict": optimizer.state_dict(),
-                    }, os.path.join(args.save, "checkpt.pth"))
-                    logger.info("Saving model at epoch {}.".format(epoch))
+                    loss = np.mean(losses)
+                    logger.info("Epoch {:04d} | Time {:.4f}, Bit/dim {:.4f}".format(epoch, time.time() - start, loss))
+                    if loss < best_loss:
+                        best_loss = loss
+                        torch.save({
+                            "args": args,
+                            "epoch": epoch,
+                            "state_dict": model.module.state_dict() if torch.cuda.is_available() else model.state_dict(),
+                            "optim_state_dict": optimizer.state_dict(),
+                        }, os.path.join(args.save, "checkpt.pth"))
+                        logger.info("Saving model at epoch {}.".format(epoch))
 
-        # visualize samples and density
-        evaluation.save_recon_images(args, model, validation_loader, data_shape)
-        evaluation.save_fixed_z_image(args, model, data_shape)
+            # visualize samples and density
+            evaluation.save_recon_images(args, model, validation_loader, data_shape)
+            evaluation.save_fixed_z_image(args, model, data_shape)
 

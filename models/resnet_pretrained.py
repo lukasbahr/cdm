@@ -144,9 +144,17 @@ class Net(nn.Module):
       return nn.Sequential(*layers)
 
 
-def run(args, resnet, images, recon_images, vec_labels, data_shape):
+def run(args, logger, images, recon_images, vec_labels, data_shape):
 
     #  device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    resnet = Net(args.batch_size).to(device)
+
+    try:
+        checkpnt = torch.load(args.resnet_checkpoint)
+        resnet.load_state_dict(checkpnt["model_state_dict"])
+    except:
+        logger.info("No valid checkpoint for pretrained resnet given.")
+
     loss_function = nn.MSELoss()
 
     with torch.no_grad():

@@ -23,9 +23,10 @@ parser = argparse.ArgumentParser("Continuous Depth Models")
 
 parser.add_argument("--model", choices=["ffjord", "snf"], type=str)
 parser.add_argument("--data", choices=["piv","mnist", "cifar10"], type=str, default="mnist")
+parser.add_argument("--resume", type=str, default=None)
 
 parser.add_argument("--num_epochs", type=int, default=1000)
-parser.add_argument("--batch_size", type=int, default=100)
+parser.add_argument("--batch_size", type=int, default=128) # Try 32, 64, 128, 256
 parser.add_argument("--batch_size_schedule", type=str, default="", help="Increases the batchsize at every given epoch, dash separated.")
 parser.add_argument("--test_batch_size", type=int, default=200)
 parser.add_argument("--lr", type=float, default=1e-3)
@@ -33,10 +34,14 @@ parser.add_argument("--lr", type=float, default=1e-3)
 # ============================================================================
 # Arguments evaluation
 # ============================================================================
-parser.add_argument("--evaluation_numerical", type=bool, default=False)
+parser.add_argument("--evaluate", type=bool, default=True)
+parser.add_argument("--resnet_checkpoint", type=str, default=None)
 parser.add_argument("--save_recon_images_size", type=int, default=8)
 parser.add_argument("--experiment_name", type=str, default=None)
 parser.add_argument("--save", type=str, default=None)
+
+parser.add_argument("--val_freq", type=int, default=1)
+parser.add_argument("--log_freq", type=int, default=10)
 
 # ============================================================================
 # Arguments for ffjord
@@ -93,11 +98,6 @@ parser.add_argument('--JoffdiagFrobint', type=float, default=None, help="int_t |
 parser.add_argument("--time_penalty", type=float, default=0, help="Regularization on the end_time.")
 parser.add_argument("--max_grad_norm", type=float, default=1e10,
     help="Max norm of graidents (default is just stupidly high to avoid any clipping)")
-
-parser.add_argument("--begin_epoch", type=int, default=1)
-parser.add_argument("--resume", type=str, default=None)
-parser.add_argument("--val_freq", type=int, default=1)
-parser.add_argument("--log_freq", type=int, default=10)
 
 # ============================================================================
 # Arguments for snf
