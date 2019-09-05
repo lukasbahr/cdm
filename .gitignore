@@ -1,2 +1,3 @@
 /data
-/resnet/*.txt
+/resnet
+/experiments
