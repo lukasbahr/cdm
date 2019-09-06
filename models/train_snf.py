@@ -47,8 +47,8 @@ def run(args, logger, train_loader, validation_loader, data_shape):
         num_data = 0
 
         for idx_count, data in enumerate(train_loader):
-            #  if idx_count > break_training:
-                #  break
+            if idx_count > break_training:
+                break
 
             if args.data == "piv":
                 x, y = data['ComImages'].float(), data['AllGenDetails'].float()
@@ -97,7 +97,9 @@ def run(args, logger, train_loader, validation_loader, data_shape):
                     losses_vec_images_recon_images = []
                     losses = []
 
-                    for (data) in validation_loader:
+                    for _,(data) in enumerate(validation_loader):
+                        if _ > break_training:
+                            break
                         if args.data == 'piv':
                             x, y = data['ComImages'],data['AllGenDetails']
                             x = x.to(device)
@@ -112,8 +114,8 @@ def run(args, logger, train_loader, validation_loader, data_shape):
                         if args.data == "piv":
                             loss_vec_recon_images, loss_vec_images_recon_images = resnet_pretrained.run(args, logger,
                                     recon_images, x, y, data_shape)
-                            losses_vec_recon_images.append(loss_vec_recon_images)
-                            losses_vec_images_recon_images.append(loss_vec_images_recon_images)
+                            losses_vec_recon_images.append(loss_vec_recon_images.item())
+                            losses_vec_images_recon_images.append(loss_vec_images_recon_images.item())
 
 
                     if args.data == "piv":
