@@ -140,5 +140,5 @@ def run(args, logger, train_loader, validation_loader, data_shape):
             # Evaluation
             evaluation.save_recon_images(args, model, validation_loader, data_shape)
             evaluation.save_fixed_z_image(args, model, data_shape)
-            evaluation.save_2D_manifold(args, model, data_shape)
+            #  evaluation.save_2D_manifold(args, model, data_shape)
 
