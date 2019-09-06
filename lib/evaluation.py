@@ -86,7 +86,7 @@ def save_fixed_z_image(args, model, data_shape):
                 count += 1
 
         else:
-            x_cat = torch.cat([generated_sample[:args.save_recon_images_size,0,:,:]],
+            x_cat = torch.cat([generated_sample[:number_img,0,:,:]],
                     0).view(-1, 1, data_shape[1], data_shape[2])
             name = args.save + '/fixed_z_' + args.experiment_name + '.png'
             save_image(x_cat, name, nrow=10)
