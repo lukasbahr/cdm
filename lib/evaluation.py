@@ -104,7 +104,7 @@ def save_2D_manifold(args, model, data_shape):
     for i, yi in enumerate(grid_x):
         for j, xi in enumerate(grid_y):
             z_sample = np.array([xi, yi])
-            z_sample = torch.Tensor())
+            z_sample = torch.Tensor()
 
 
 
