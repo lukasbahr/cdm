@@ -240,13 +240,17 @@ def run(args, logger, train_loader, validation_loader, data_shape):
             itr += 1
 
         # Evaluate and save model
-        if arg.evaluate:
+        if args.evaluate:
             if epoch % args.val_freq == 0:
                 model.eval()
                 with torch.no_grad():
                     start = time.time()
                     logger.info("validating...")
+
                     losses = []
+                    losses_vec_recon_images = []
+                    losses_vec_images_recon_images = []
+
                     for (data) in validation_loader:
                         if args.data == 'piv':
                             x, y = data['ComImages'],data['AllGenDetails']
@@ -259,8 +263,18 @@ def run(args, logger, train_loader, validation_loader, data_shape):
                         loss = compute_bits_per_dim(x, model)
                         losses.append(loss.item())
 
-                        #  loss_vec_recon_images, loss_vec_images_recon_images =
-                        #  resnet_pretrained.run(args, logger, data, recon_images, y, data_shape)
+                        if args.data == "piv":
+                            loss_vec_recon_images, loss_vec_images_recon_images = resnet_pretrained.run(args, logger,
+                                    recon_images, x, y, data_shape)
+                            losses_vec_recon_images.append(loss_vec_recon_images)
+                            losses_vec_images_recon_images.append(loss_vec_images_recon_images)
+
+
+                    if args.data == "piv":
+                        logger.info("Loss vector reconstructed images {}, Loss
+                                vector images reconstructed images
+                                {}".format(np.mean(losses_vec_recon_images,
+                                    losses_vec_images_recon_images)))
 
                     loss = np.mean(losses)
                     logger.info("Epoch {:04d} | Time {:.4f}, Bit/dim {:.4f}".format(epoch, time.time() - start, loss))
