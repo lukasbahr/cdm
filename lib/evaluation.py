@@ -3,6 +3,7 @@
 import torch
 from torchvision.utils import save_image
 
+import matplotlib.pyplot as plt
 import numpy as np
 from scipy.stats import norm
 
@@ -62,7 +63,6 @@ def save_fixed_z_image(args, model, data_shape):
     with torch.no_grad():
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-
         cvt = lambda x: x.type(torch.float32).to(device, non_blocking=True)
 
         if args.model == "ffjord":
@@ -94,6 +94,7 @@ def save_fixed_z_image(args, model, data_shape):
 
 def save_2D_manifold(args, model, data_shape):
 
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     n = 15
     digit_size = data_shape[1]
     figure = np.zeros((digit_size*n, digit_size*n))
@@ -103,8 +104,15 @@ def save_2D_manifold(args, model, data_shape):
 
     for i, yi in enumerate(grid_x):
         for j, xi in enumerate(grid_y):
-            z_sample = np.array([xi, yi])
-            z_sample = torch.Tensor()
+            z_sample = torch.Tensor([xi, yi])
+            z_sample = z_sample.to(device)
+            generated_sample = model.decode(z_sample)
+            digit = generated_sample[0].reshape(digit_size, digit_size)
+            figure[i * digit_size: (i+1)*digit_size, j * digit_size:(j + 1) *
+                    digit_size] = digit
 
+    plt.figure(figsize=(10, 10))
+    plt.imshow(figure, cmap=’Greys_r’)
+    plt.show()
 
 
