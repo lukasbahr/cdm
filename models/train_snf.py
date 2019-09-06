@@ -117,12 +117,10 @@ def run(args, logger, train_loader, validation_loader, data_shape):
                             losses_vec_recon_images.append(loss_vec_recon_images.item())
                             losses_vec_images_recon_images.append(loss_vec_images_recon_images.item())
 
-
                     if args.data == "piv":
-                        logger.info("Loss vector reconstructed images {}, Loss
-                                vector images reconstructed images
-                                {}".format(np.mean(losses_vec_recon_images,
-                                    losses_vec_images_recon_images)))
+                        logger.info("Loss vector reconstructed images {}, Loss vector images reconstructed images {}".format(np.mean(losses_vec_recon_images),
+                                    np.mean(losses_vec_images_recon_images)))
+
 
                     loss = np.mean(losses)
                     logger.info("Epoch {:04d} | Time {:.4f} | Loss {:.4f}".format(epoch, time.time() - start, loss))

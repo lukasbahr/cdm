@@ -162,7 +162,7 @@ def run(args, logger, recon_images,images, vec_labels, data_shape):
     with torch.no_grad():
 
         vec_recon_images = resnet.forward(recon_images)
-        vec_images = model.forward(images)
+        vec_images = resnet.forward(images)
 
         loss_recon_images = loss_function(vec_recon_images, vec_labels)
         #  loss_images = loss_function(vec_images, vec_labels)
