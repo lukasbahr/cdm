@@ -36,7 +36,7 @@ def run(args, logger, train_loader, validation_loader, data_shape):
     time_meter = utils.RunningAverageMeter(0.97)
 
     beta = 0.01
-    break_training = 10
+    break_training = 50
 
     best_loss = float("inf")
     itr = 0
@@ -47,8 +47,8 @@ def run(args, logger, train_loader, validation_loader, data_shape):
         num_data = 0
 
         for idx_count, data in enumerate(train_loader):
-            if idx_count > break_training:
-                break
+            #  if idx_count > break_training:
+                #  break
 
             if args.data == "piv":
                 x, y = data['ComImages'].float(), data['AllGenDetails'].float()
