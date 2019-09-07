@@ -112,7 +112,7 @@ def save_2D_manifold(args, model, data_shape):
                     digit_size] = digit
 
     plt.figure(figsize=(10, 10))
-    plt.imshow(figure, cmap=’Greys’)
+    plt.imshow(figure, cmap=’gray’)
     plt.show()
 
 
