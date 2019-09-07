@@ -41,7 +41,7 @@ def run(args, logger, train_loader, validation_loader, data_shape):
     best_loss = float("inf")
     itr = 0
     for epoch in range(start_epoch, args.num_epochs):
-        logger.info('Epoch: {} \tBeta: {}'.format(epoch,beta))
+        logger.info('Epoch: {} {} \tBeta: {}'.format(epoch,args.num_epochs, beta))
 
         model.train()
         num_data = 0
@@ -70,6 +70,7 @@ def run(args, logger, train_loader, validation_loader, data_shape):
 
             rec = rec.item()
             kl = kl.item()
+            # TODO Fix num data count
             num_data += len(data)
 
             time_meter.update(time.time() - start)
