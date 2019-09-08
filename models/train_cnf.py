@@ -178,13 +178,13 @@ def run(args, logger, train_loader, validation_loader, data_shape):
 
     best_loss = float("inf")
     itr = 0
-    break_training = 20
+    break_training = 50
     for epoch in range(start_epoch, args.num_epochs):
         logger.info("Epoch {} {}".format(epoch, args.num_epochs))
         model.train()
         for idx_count, (data) in enumerate(train_loader):
-            if idx_count > break_training:
-                break
+            #  if idx_count > break_training:
+                #  break
 
             if args.data == 'piv':
                 x, y = data['ComImages'],data['AllGenDetails']
