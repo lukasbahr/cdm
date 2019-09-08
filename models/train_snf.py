@@ -41,7 +41,7 @@ def run(args, logger, train_loader, validation_loader, data_shape):
     best_loss = float("inf")
     itr = 0
     for epoch in range(start_epoch, args.num_epochs):
-        logger.info('Epoch: {} {} \tBeta: {}'.format(epoch,args.num_epochs, beta))
+        logger.info('Epoch: {}\{} \tBeta: {}'.format(epoch,args.num_epochs, beta))
 
         model.train()
         num_data = 0
