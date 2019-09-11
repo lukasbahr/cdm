@@ -27,20 +27,24 @@ def save_recon_images(args, model, validation_loader, data_shape):
             x = x.to(device)
 
         if args.model == "ffjord":
+            # In order to get the reconstructed images we need to run the model
+            # generate z and run the model backward with given z to generate x
             zero = torch.zeros(x.shape[0], 1).to(x)
             z, delta_logp = model(x, zero)  # run model forward
 
-            generated_sample = model(z, reverse=True)
+            recon_img = model(z, reverse=True)
         elif args.model == "snf":
-            generated_sample, z_mu, z_var, ldj, z0, z_k = model(x)
+            recon_img, z_mu, z_var, ldj, z0, z_k = model(x)
 
-        generated_sample = generated_sample.cpu()
+        recon_img = recon_img.cpu()
         images = x.cpu()
 
         if args.data == "piv":
-            x_cat_1 = torch.cat([images[:args.save_recon_images_size,0,:,:], generated_sample[:args.save_recon_images_size,0,:,:]],
+            x_cat_1 = torch.cat([images[:args.save_recon_images_size,0,:,:],
+                recon_img[:args.save_recon_images_size,0,:,:]],
                     0).view(-1, 1, data_shape[1], data_shape[2])
-            x_cat_2 = torch.cat([images[:args.save_recon_images_size,1,:,:], generated_sample[:args.save_recon_images_size,1,:,:]],
+            x_cat_2 = torch.cat([images[:args.save_recon_images_size,1,:,:],
+                recon_img[:args.save_recon_images_size,1,:,:]],
                     0).view(-1, 1, data_shape[1], data_shape[2])
 
             images = [x_cat_1.cpu().data,x_cat_2.cpu().data]
@@ -52,7 +56,8 @@ def save_recon_images(args, model, validation_loader, data_shape):
                 count += 1
 
         else:
-            x_cat = torch.cat([images[:args.save_recon_images_size,0,:,:], generated_sample[:args.save_recon_images_size,0,:,:]],
+            x_cat = torch.cat([images[:args.save_recon_images_size,0,:,:],
+                recon_img[:args.save_recon_images_size,0,:,:]],
                     0).view(-1, 1, data_shape[1], data_shape[2])
             name = args.save + '/reconstruction_' + args.experiment_name + '.png'
             save_image(x_cat, name, nrow=8)
@@ -109,8 +114,8 @@ def save_2D_manifold(args, model, data_shape):
         for j, xi in enumerate(grid_y):
             z_sample = torch.Tensor([xi, yi])
             z_sample = z_sample.to(device)
-            generated_sample = model.decode(z_sample)
-            digit = generated_sample[0].reshape(digit_size, digit_size)
+            recon_img = model.decode(z_sample)
+            digit = recon_img[0].reshape(digit_size, digit_size)
             figure[i * digit_size: (i+1)*digit_size, j * digit_size:(j + 1) *
                     digit_size] = digit
 
