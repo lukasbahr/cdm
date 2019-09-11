@@ -177,14 +177,18 @@ def run(args, logger, train_loader, validation_loader, data_shape):
     if args.spectral_norm and not args.resume: spectral_norm_power_iteration(model, 500)
 
     best_loss = float("inf")
+
     itr = 0
+    train_loader_break = 10000
+    break_train = int(train_loader_break/args.batch_size)
     break_training = 50
+
     for epoch in range(start_epoch, args.num_epochs):
-        logger.info("Epoch {}\{}".format(epoch, args.num_epochs))
+        logger.info("Epoch {}/{}".format(epoch, args.num_epochs))
         model.train()
         for idx_count, (data) in enumerate(train_loader):
-            #  if idx_count > break_training:
-                #  break
+            if idx_count > break_train:
+                break
 
             if args.data == 'piv':
                 x, y = data['ComImages'],data['AllGenDetails']
@@ -251,7 +255,8 @@ def run(args, logger, train_loader, validation_loader, data_shape):
                     losses_vec_recon_images = []
                     losses_vec_images_recon_images = []
 
-                    for _,(data) in enumerate(validation_loader):
+                    #  for _,(data) in enumerate(validation_loader):
+                    for _,(data) in enumerate(train_loader):
                         if  _ > break_training:
                             break
                         if args.data == 'piv':

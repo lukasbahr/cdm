@@ -36,19 +36,21 @@ def run(args, logger, train_loader, validation_loader, data_shape):
     time_meter = utils.RunningAverageMeter(0.97)
 
     beta = 0.01
+    train_loader_break = 100000
+    break_train = int(train_loader_break/args.batch_size)
     break_training = 50
 
     best_loss = float("inf")
     itr = 0
     for epoch in range(start_epoch, args.num_epochs):
-        logger.info('Epoch: {}\{} \tBeta: {}'.format(epoch,args.num_epochs, beta))
+        logger.info('Epoch: {}/{} \tBeta: {}'.format(epoch,args.num_epochs, beta))
 
         model.train()
         num_data = 0
 
         for idx_count, data in enumerate(train_loader):
-            #  if idx_count > break_training:
-                #  break
+            if idx_count > break_training:
+                break
 
             if args.data == "piv":
                 x, y = data['ComImages'].float(), data['AllGenDetails'].float()

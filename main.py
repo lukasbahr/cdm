@@ -162,7 +162,7 @@ def get_train_loader(train_set, epoch):
     else:
         current_batch_size = args.batch_size
     train_loader = torch.utils.data.DataLoader(
-        dataset=train_set, batch_size=current_batch_size, shuffle=True, drop_last=True, pin_memory=True
+        dataset=train_set, batch_size=current_batch_size, shuffle=False, drop_last=True, pin_memory=True
     )
     logger.info("===> Using batch size {}. Total {} iterations/epoch.".format(current_batch_size, len(train_loader)))
     return train_loader
@@ -179,8 +179,8 @@ def get_dataset(args):
     elif args.data == "piv":
         im_dim = 2
         im_size = 32 if args.imagesize is None else args.imagesize
-        train_set = dataset.H5Dataset("/home/bahr/cdm/data/ISPIV_dataset/Batch_Training-Dataset_2Labels_S12_SynthImg_Alex.hdf5")
-        test_set = dataset.H5Dataset("/home/bahr/cdm/data/ISPIV_dataset/Batch_Validation-Dataset_2Labels_S12_SynthImg_Alex.hdf5")
+        train_set = dataset.H5Dataset("/home/bahr/cdm/data/ISPIV_dataset/Batch_Training-Dataset_2Labels_S12_SynthImg_NCHW_Alex.hdf5")
+        test_set = dataset.H5Dataset("/home/bahr/cdm/data/ISPIV_dataset/Batch_Validation-Dataset_2Labels_S12_SynthImg_NCHW_Alex.hdf5")
     elif args.data == "cifar10":
         im_dim = 3
         im_size = 32 if args.imagesize is None else args.imagesize

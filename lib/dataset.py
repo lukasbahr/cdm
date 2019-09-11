@@ -39,7 +39,8 @@ class H5Dataset(Dataset):
 
     def __getitem__(self, idx):
         # NHWC to NCHW
-        image = np.transpose(self.db[self.imgs_key][idx], (2 , 1, 0)) #NHWC -> NCHW
+        #  image = np.transpose(self.db[self.imgs_key][idx], (2 , 1, 0)) #NHWC -> NCHW
+        image = self.db[self.imgs_key][idx]
         image = torch.from_numpy(image)
 
         # Normalize image

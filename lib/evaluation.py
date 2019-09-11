@@ -27,7 +27,10 @@ def save_recon_images(args, model, validation_loader, data_shape):
             x = x.to(device)
 
         if args.model == "ffjord":
-            generated_sample = model(x, reverse=True)
+            zero = torch.zeros(x.shape[0], 1).to(x)
+            z, delta_logp = model(x, zero)  # run model forward
+
+            generated_sample = model(z, reverse=True)
         elif args.model == "snf":
             generated_sample, z_mu, z_var, ldj, z0, z_k = model(x)
 
