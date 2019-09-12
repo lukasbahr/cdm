@@ -179,7 +179,7 @@ def run(args, logger, train_loader, validation_loader, data_shape):
     best_loss = float("inf")
 
     itr = 0
-    train_loader_break = 10000
+    train_loader_break = 100000
     break_train = int(train_loader_break/args.batch_size)
     break_training = 50
 
@@ -255,8 +255,8 @@ def run(args, logger, train_loader, validation_loader, data_shape):
                     losses_vec_recon_images = []
                     losses_vec_images_recon_images = []
 
-                    #  for _,(data) in enumerate(validation_loader):
-                    for _,(data) in enumerate(train_loader):
+                    for _,(data) in enumerate(validation_loader):
+                    #  for _,(data) in enumerate(train_loader):
                         if  _ > break_training:
                             break
                         if args.data == 'piv':

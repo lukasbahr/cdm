@@ -162,7 +162,7 @@ def get_train_loader(train_set, epoch):
     else:
         current_batch_size = args.batch_size
     train_loader = torch.utils.data.DataLoader(
-        dataset=train_set, batch_size=current_batch_size, shuffle=False, drop_last=True, pin_memory=True
+        dataset=train_set, batch_size=current_batch_size, shuffle=True, drop_last=True, pin_memory=True
     )
     logger.info("===> Using batch size {}. Total {} iterations/epoch.".format(current_batch_size, len(train_loader)))
     return train_loader
