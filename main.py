@@ -30,6 +30,7 @@ parser.add_argument("--batch_size", type=int, default=128) # Try 32, 64, 128, 25
 parser.add_argument("--batch_size_schedule", type=str, default="", help="Increases the batchsize at every given epoch, dash separated.")
 parser.add_argument("--test_batch_size", type=int, default=200)
 parser.add_argument("--lr", type=float, default=1e-3)
+parser.add_argument("--heterogen", type=eval, default=False, choices=[True, False])
 
 # ============================================================================
 # Arguments evaluation
@@ -183,6 +184,8 @@ def get_dataset(args):
         im_size = 32 if args.imagesize is None else args.imagesize
         train_set = dataset.H5Dataset("/home/bahr/cdm/data/ISPIV_dataset/Batch_Training-Dataset_2Labels_S12_SynthImg_NCHW_Alex.hdf5")
         test_set = dataset.H5Dataset("/home/bahr/cdm/data/ISPIV_dataset/Batch_Validation-Dataset_2Labels_S12_SynthImg_NCHW_Alex.hdf5")
+        if args.heterogen:
+            im_dim = 4
     elif args.data == "cifar10":
         im_dim = 3
         im_size = 32 if args.imagesize is None else args.imagesize

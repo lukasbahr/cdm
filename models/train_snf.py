@@ -56,10 +56,29 @@ def run(args, logger, train_loader, validation_loader, data_shape):
         for idx_count, data in enumerate(train_loader):
             #  if idx_count > break_training:
                 #  break
+            if args.data == 'piv':
+                x_, y_ = data['ComImages'],data['AllGenDetails']
 
-            if args.data == "piv":
-                x, y = data['ComImages'].float(), data['AllGenDetails'].float()
-                x = x.to(device)
+                if args.heterogen:
+                    x = torch.zeros([x_.size(0), 4, 32, 32])
+                    x[:,:2,:,:] = x_
+                    for idx in range(x_.size(0)):
+                        u_vector = torch.zeros([1,32,32])
+                        u_vector.fill_(y_[idx][0]/20*0.5 + 0.5)
+
+                        v_vector = torch.zeros([1,32,32])
+                        v_vector.fill_(y_[idx][1]/20*0.5 + 0.5)
+
+                        x[idx, 2,:,:] = u_vector
+                        x[idx, 3,:,:] = v_vector
+
+                        x = x.to(device)
+
+                else:
+                    x = x_
+                    y = y_
+
+                    x = x.to(device)
             else:
                 x, y = data
                 x = x.to(device)
@@ -108,11 +127,32 @@ def run(args, logger, train_loader, validation_loader, data_shape):
                     losses = []
 
                     for _,(data) in enumerate(validation_loader):
+
                         if _ > break_training:
                             break
+
                         if args.data == 'piv':
-                            x, y = data['ComImages'],data['AllGenDetails']
-                            x = x.to(device)
+                            x_, y_ = data['ComImages'],data['AllGenDetails']
+
+                            if args.heterogen:
+                                x = torch.zeros([x_.size(0), 4, 32, 32])
+                                x[:,:2,:,:] = x_
+                                for idx in range(x_.size(0)):
+                                    u_vector = torch.zeros([1,32,32])
+                                    u_vector.fill_(y_[idx][0]/20*0.5 + 0.5)
+
+                                    v_vector = torch.zeros([1,32,32])
+                                    v_vector.fill_(y_[idx][1]/20*0.5 + 0.5)
+
+                                    x[idx, 2,:,:] = u_vector
+                                    x[idx, 3,:,:] = v_vector
+                                    x = x.to(device)
+
+                            else:
+                                x = x_
+                                y = y_
+
+                                x = x.to(device)
                         else:
                             x, y = data
                             x = x.to(device)
@@ -121,13 +161,13 @@ def run(args, logger, train_loader, validation_loader, data_shape):
                         loss, rec, kl = loss_function.binary_loss_function(recon_images, x, z_mu, z_var, z0, z_k, ldj, beta)
                         losses.append(loss.item())
 
-                        if args.data == "piv":
+                        if args.data == "piv" and args.heterogen == False:
                             loss_vec_recon_images, loss_vec_images_recon_images = resnet_pretrained.run(args, logger,
                                     recon_images, x, y, data_shape)
                             losses_vec_recon_images.append(loss_vec_recon_images.item())
                             losses_vec_images_recon_images.append(loss_vec_images_recon_images.item())
 
-                    if args.data == "piv":
+                    if args.data == "piv" and args.heterogen == False:
                         logger.info("Loss vector reconstructed images {}, Loss vector images reconstructed images {}".format(np.mean(losses_vec_recon_images),
                                     np.mean(losses_vec_images_recon_images)))
 
@@ -149,7 +189,8 @@ def run(args, logger, train_loader, validation_loader, data_shape):
                 beta += 0.01
 
             # Evaluation
-            evaluation.save_recon_images(args, model, validation_loader, data_shape)
-            evaluation.save_fixed_z_image(args, model, data_shape)
+            evaluation.save_recon_images(args, model, validation_loader,
+                    data_shape, logger)
+            evaluation.save_fixed_z_image(args, model, data_shape, logger)
             #  evaluation.save_2D_manifold(args, model, data_shape)
 

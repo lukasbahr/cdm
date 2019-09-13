@@ -8,7 +8,7 @@ import numpy as np
 from scipy.stats import norm
 
 
-def save_recon_images(args, model, validation_loader, data_shape):
+def save_recon_images(args, model, validation_loader, data_shape, logger):
     """Saves reconstructed images to samples folder."""
 
     with torch.no_grad():
@@ -18,9 +18,27 @@ def save_recon_images(args, model, validation_loader, data_shape):
 
         _, data = next(validation_set_enumerate)
 
-        if args.data == "piv":
-            x, y = data['ComImages'], data['AllGenDetails']
-            x = x.to(device)
+        if args.data == 'piv':
+            x_, y_ = data['ComImages'],data['AllGenDetails']
+
+            if args.heterogen:
+                x = torch.zeros([x_.size(0), 4, 32, 32])
+                x[:,:2,:,:] = x_
+                for idx in range(x_.size(0)):
+                    u_vector = torch.zeros([1,32,32])
+                    u_vector.fill_(y_[idx][0]/20*0.5 + 0.5)
+
+                    v_vector = torch.zeros([1,32,32])
+                    v_vector.fill_(y_[idx][1]/20*0.5 + 0.5)
+
+                    x[idx, 2,:,:] = u_vector
+                    x[idx, 3,:,:] = v_vector
+
+                    x = x.to(device)
+
+            else:
+                x = x_.to(device)
+                y = y_.to(device)
         else:
             x, y = data
             x = x.to(device)
@@ -39,6 +57,10 @@ def save_recon_images(args, model, validation_loader, data_shape):
         images = x.cpu()
 
         if args.data == "piv":
+            if args.heterogen:
+                logger.info("learned u vector {}, v vector {}".format(recon_img[0][2][0], recon_img[0][3][0]))
+                logger.info("true u vector {}, v vector {}".format(images[0][2][0], images[0][3][0]))
+
             x_cat_1 = torch.cat([images[:args.save_recon_images_size,0,:,:],
                 recon_img[:args.save_recon_images_size,0,:,:]],
                     0).view(-1, 1, data_shape[1], data_shape[2])
@@ -62,13 +84,12 @@ def save_recon_images(args, model, validation_loader, data_shape):
             save_image(x_cat, name, nrow=8)
 
 
-def save_fixed_z_image(args, model, data_shape):
+def save_fixed_z_image(args, model, data_shape, logger):
     """ Save samples with fixed z. """
 
     number_img = 100
 
     with torch.no_grad():
-
 
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -83,6 +104,11 @@ def save_fixed_z_image(args, model, data_shape):
             generated_sample = model.decode(fixed_z)
 
         if args.data == "piv":
+
+            if args.heterogen:
+                logger.info("learned u vector {}, v vector {}".format(recon_img[0][2][0], recon_img[0][3][0]))
+                logger.info("true u vector {}, v vector {}".format(images[0][2][0], images[0][3][0]))
+
             x_cat_1 = torch.cat([generated_sample[:number_img, 0,:,:]],0).view(-1, 1, data_shape[1], data_shape[2])
             x_cat_2 = torch.cat([generated_sample[:number_img, 1,:,:]],0).view(-1, 1, data_shape[1], data_shape[2])
 

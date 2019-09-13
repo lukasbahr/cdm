@@ -179,7 +179,7 @@ def run(args, logger, train_loader, validation_loader, data_shape):
     best_loss = float("inf")
 
     itr = 0
-    train_loader_break = 100000
+    train_loader_break = 3000
     break_train = int(train_loader_break/args.batch_size)
     break_training = 50
 
@@ -191,7 +191,27 @@ def run(args, logger, train_loader, validation_loader, data_shape):
                 break
 
             if args.data == 'piv':
-                x, y = data['ComImages'],data['AllGenDetails']
+                x_, y_ = data['ComImages'],data['AllGenDetails']
+
+                if args.heterogen:
+                    x = torch.zeros([x_.size(0), 4, 32, 32])
+                    x[:,:2,:,:] = x_
+                    for idx in range(x_.size(0)):
+                        u_vector = torch.zeros([1,32,32])
+                        u_vector.fill_(y_[idx][0]/20*0.5 + 0.5)
+
+                        v_vector = torch.zeros([1,32,32])
+                        v_vector.fill_(y_[idx][1]/20*0.5 + 0.5)
+
+                        x[idx, 2,:,:] = u_vector
+                        x[idx, 3,:,:] = v_vector
+
+                    #  import pdb; pdb.set_trace()
+
+                else:
+                    x = x_
+                    y = y_
+
             else:
                 x, y = data
 
@@ -260,7 +280,24 @@ def run(args, logger, train_loader, validation_loader, data_shape):
                         if  _ > break_training:
                             break
                         if args.data == 'piv':
-                            x, y = data['ComImages'],data['AllGenDetails']
+                            x_, y_ = data['ComImages'],data['AllGenDetails']
+
+                            if args.heterogen:
+                                x = torch.zeros([x_.size(0), 4, 32, 32])
+                                x[:,:2,:,:] = x_
+                                for idx in range(x_.size(0)):
+                                    u_vector = torch.zeros([1,32,32])
+                                    u_vector.fill_(y_[idx][0]/20*0.5 + 0.5)
+
+                                    v_vector = torch.zeros([1,32,32])
+                                    v_vector.fill_(y_[idx][1]/20*0.5 + 0.5)
+
+                                    x[idx, 2,:,:] = u_vector
+                                    x[idx, 3,:,:] = v_vector
+
+                            else:
+                                x = x_
+                                y = y_
                         else:
                             x, y = data
 
@@ -275,14 +312,14 @@ def run(args, logger, train_loader, validation_loader, data_shape):
                         loss = compute_bits_per_dim(x, model)
                         losses.append(loss.item())
 
-                        if args.data == "piv":
+                        if args.data == "piv" and args.heterogen == False:
                             loss_vec_recon_images, loss_vec_images_recon_images = resnet_pretrained.run(args, logger,
                                     recon_images, x, y, data_shape)
                             losses_vec_recon_images.append(loss_vec_recon_images.item())
                             losses_vec_images_recon_images.append(loss_vec_images_recon_images.item())
 
 
-                    if args.data == "piv":
+                    if args.data == "piv" and args.heterogen == False:
                         logger.info("Loss vector reconstructed images {}, Loss vector images reconstructed images {}".format(np.mean(losses_vec_recon_images),
                                     np.mean(losses_vec_images_recon_images)))
 
@@ -299,6 +336,8 @@ def run(args, logger, train_loader, validation_loader, data_shape):
                         logger.info("Saving model at epoch {}.".format(epoch))
 
             # visualize samples and density
-            evaluation.save_recon_images(args, model, validation_loader, data_shape)
-            evaluation.save_fixed_z_image(args, model, data_shape)
+            evaluation.save_recon_images(args, model, validation_loader,
+                    data_shape, logger)
+            if args.heterogen == False:
+                evaluation.save_fixed_z_image(args, model, data_shape, logger)
 
