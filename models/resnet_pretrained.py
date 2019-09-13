@@ -144,7 +144,7 @@ class Net(nn.Module):
       return nn.Sequential(*layers)
 
 
-def run(args, logger, recon_images,images, vec_labels, data_shape):
+def run(args, logger, recon_images, images, vec_labels, data_shape):
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     vec_labels = vec_labels.to(device)

@@ -268,7 +268,10 @@ def run(args, logger, train_loader, validation_loader, data_shape):
                             x = x.view(x.shape[0], -1)
                         x = cvt(x)
 
-                        recon_images = model(x, reverse=True)
+                        zero = torch.zeros(x.shape[0], 1).to(x)
+                        z, delta_logp = model(x, zero)  # run model forward
+
+                        recon_images = model(z, reverse=True)
                         loss = compute_bits_per_dim(x, model)
                         losses.append(loss.item())
 
