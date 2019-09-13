@@ -16,8 +16,8 @@ def run(args, logger, train_loader, validation_loader, data_shape):
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    #  model = module.HouseholderSylvesterVAE(args, data_shape)
-    model = module.OrthogonalSylvesterVAE(args, data_shape)
+    model = module.HouseholderSylvesterVAE(args, data_shape)
+    #  model = module.OrthogonalSylvesterVAE(args, data_shape)
 
     model.to(device)
 
@@ -51,7 +51,7 @@ def run(args, logger, train_loader, validation_loader, data_shape):
 
         model.train()
         num_data = 0
-    	end = time.time()
+        end = time.time()
 
         for idx_count, data in enumerate(train_loader):
             #  if idx_count > break_training:
@@ -79,15 +79,15 @@ def run(args, logger, train_loader, validation_loader, data_shape):
             kl = kl.item()
             num_data += len(x)
 
-	    batch_time = time.time() - end
+            batch_time = time.time() - end
             end = time.time()
 
             if itr % args.log_freq == 0:
                 log_message = (
-                    "Epoch {:03d} | Time {:.3f} | [{:5d}/{:5d} ({:2.0f}%)] | Loss: {:11.6f} |"
+                    "Epoch {:03d} |  [{:5d}/{:5d} ({:2.0f}%)] | Time {:.3f} | Loss: {:11.6f} |"
                     "rec:{:11.6f} | kl: {:11.6f}".format(
-                        epoch, batch_time, num_data, len(train_loader.sampler), 100.*idx_count/len(train_loader),
-                        loss.item(), rec, kl)
+                        epoch,  num_data, len(train_loader.sampler), 100.*idx_count/len(train_loader),
+                        batch_time, loss.item(), rec, kl)
                     )
                 logger.info(log_message)
 
