@@ -22,7 +22,8 @@ def run(args, logger, train_loader, validation_loader, data_shape):
     model.to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.2, patience=10, min_lr=1e-8)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min',
+            factor=0.2, patience=5, min_lr=1e-8)
 
     start_epoch = 0
 
@@ -50,6 +51,7 @@ def run(args, logger, train_loader, validation_loader, data_shape):
 
         model.train()
         num_data = 0
+    	end = time.time()
 
         for idx_count, data in enumerate(train_loader):
             #  if idx_count > break_training:
@@ -75,21 +77,23 @@ def run(args, logger, train_loader, validation_loader, data_shape):
 
             rec = rec.item()
             kl = kl.item()
-            # TODO Fix num data count
-            num_data += len(data)
+            num_data += len(x)
 
-            time_meter.update(time.time() - start)
+	    batch_time = time.time() - end
+            end = time.time()
 
             if itr % args.log_freq == 0:
                 log_message = (
-                    "Epoch {:03d} | Time {:.4f}({:.4f}) | [{:5d}/{:5d} ({:2.0f}%)] | Loss: {:11.6f} |"
+                    "Epoch {:03d} | Time {:.3f} | [{:5d}/{:5d} ({:2.0f}%)] | Loss: {:11.6f} |"
                     "rec:{:11.6f} | kl: {:11.6f}".format(
-                        epoch, time_meter.val, time_meter.avg, num_data, len(train_loader.sampler), 100.*idx_count/len(train_loader),
+                        epoch, batch_time, num_data, len(train_loader.sampler), 100.*idx_count/len(train_loader),
                         loss.item(), rec, kl)
                     )
                 logger.info(log_message)
 
             itr += 1
+
+        scheduler.step(loss.item())
 
         # Evaluate and save model
         if args.evaluate:
