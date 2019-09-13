@@ -16,11 +16,14 @@ def run(args, logger, train_loader, validation_loader, data_shape):
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    model = module.HouseholderSylvesterVAE(args, data_shape)
+    #  model = module.HouseholderSylvesterVAE(args, data_shape)
+    model = module.OrthogonalSylvesterVAE(args, data_shape)
 
     model.to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.2, patience=10, min_lr=1e-8)
+
     start_epoch = 0
 
     # restore parameters
@@ -35,8 +38,8 @@ def run(args, logger, train_loader, validation_loader, data_shape):
 
     time_meter = utils.RunningAverageMeter(0.97)
 
-    beta = 0.01
-    train_loader_break = 100000
+    beta = args.beta
+    train_loader_break = 500000
     break_train = int(train_loader_break/args.batch_size)
     break_training = 50
 
@@ -49,8 +52,8 @@ def run(args, logger, train_loader, validation_loader, data_shape):
         num_data = 0
 
         for idx_count, data in enumerate(train_loader):
-            if idx_count > break_training:
-                break
+            #  if idx_count > break_training:
+                #  break
 
             if args.data == "piv":
                 x, y = data['ComImages'].float(), data['AllGenDetails'].float()
@@ -138,7 +141,8 @@ def run(args, logger, train_loader, validation_loader, data_shape):
                         }, os.path.join(args.save, "checkpt.pth"))
                         logger.info("Saving model at epoch {}.".format(epoch))
 
-            beta += 0.01
+            if beta < 1:
+                beta += 0.01
 
             # Evaluation
             evaluation.save_recon_images(args, model, validation_loader, data_shape)

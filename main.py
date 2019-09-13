@@ -105,6 +105,8 @@ parser.add_argument("--max_grad_norm", type=float, default=1e10,
 parser.add_argument('--z_size', type=int, default=64, metavar='ZSIZE', help='how many stochastic hidden units')
 parser.add_argument('--num_flows', type=int, default=4,metavar='NUM_FLOWS', help='Number of flow layers, ignored in absence of flows')
 parser.add_argument('--num_householder', type=int, default=8, metavar='NUM_HOUSEHOLDERS',help=""" For Householder Sylvester flow: Number of Householder matrices per flow. Ignored for other flow types.""")
+parser.add_argument('-nv', '--num_ortho_vecs', type=int, default=8,metavar='NUM_ORTHO_VECS')
+parser.add_argument('--beta', type=int, default=0.01, metavar='BETA')
 
 
 args = parser.parse_args()

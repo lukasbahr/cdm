@@ -518,20 +518,3 @@ class HouseholderSylvesterVAE(VAE):
         return x_mean, z_mu, z_var, self.log_det_j, z[0], z[-1]
 
 
-class VectorModel(nn.Module):
-    def __init__(self):
-        super(VectorModel, self).__init__()
-
-        self.fc1 = nn.Linear(2 * 32 * 32, 800)
-        self.fc2 = nn.Linear(8000,400)
-        self.fc3 = nn.Linear(400,100)
-        self.fc4 = nn.Linear(100,2)
-
-    def forward(self, x):
-        x = nn.ReLU(self.fc1(x))
-        x = nn.ReLU(self.fc2(x))
-        x = nn.ReLU(self.fc3(x))
-        x = self.fc4(x)
-
-        return x
-

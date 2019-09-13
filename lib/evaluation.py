@@ -12,9 +12,6 @@ def save_recon_images(args, model, validation_loader, data_shape):
     """Saves reconstructed images to samples folder."""
 
     with torch.no_grad():
-	
-	model.eval()	
-	
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
         validation_set_enumerate = enumerate(validation_loader)
@@ -72,7 +69,6 @@ def save_fixed_z_image(args, model, data_shape):
 
     with torch.no_grad():
 
-	model.eval()
 
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
