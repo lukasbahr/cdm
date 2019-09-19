@@ -187,8 +187,8 @@ def run(args, logger, train_loader, validation_loader, data_shape):
         logger.info("Epoch {}/{}".format(epoch, args.num_epochs))
         model.train()
         for idx_count, (data) in enumerate(train_loader):
-            if idx_count > break_train:
-                break
+            #  if idx_count > break_train:
+                #  break
 
             if args.data == 'piv':
                 x_, y_ = data['ComImages'],data['AllGenDetails']
@@ -338,6 +338,5 @@ def run(args, logger, train_loader, validation_loader, data_shape):
             # visualize samples and density
             evaluation.save_recon_images(args, model, validation_loader,
                     data_shape, logger)
-            if args.heterogen == False:
-                evaluation.save_fixed_z_image(args, model, data_shape, logger)
+            evaluation.save_fixed_z_image(args, model, data_shape, logger)
 

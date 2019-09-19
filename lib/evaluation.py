@@ -4,6 +4,7 @@ import torch
 from torchvision.utils import save_image
 
 import matplotlib.pyplot as plt
+import time
 import numpy as np
 from scipy.stats import norm
 
@@ -56,6 +57,8 @@ def save_recon_images(args, model, validation_loader, data_shape, logger):
         recon_img = recon_img.cpu()
         images = x.cpu()
 
+        date_string = time.strftime("%Y-%m-%d-%H:%M")
+
         if args.data == "piv":
             if args.heterogen:
                 logger.info("learned u vector {}, v vector {}".format(recon_img[0][2][0], recon_img[0][3][0]))
@@ -72,7 +75,7 @@ def save_recon_images(args, model, validation_loader, data_shape, logger):
 
             count = 0
             for image in images:
-                name = args.save + '/reconstruction_' + args.experiment_name + str(count) + '.png'
+                name = args.save + '/reconstruction_' + args.experiment_name + '_' + date_string + '_' str(count) + '.png'
                 save_image(image, name, nrow=8 )
                 count += 1
 
@@ -80,7 +83,7 @@ def save_recon_images(args, model, validation_loader, data_shape, logger):
             x_cat = torch.cat([images[:args.save_recon_images_size,0,:,:],
                 recon_img[:args.save_recon_images_size,0,:,:]],
                     0).view(-1, 1, data_shape[1], data_shape[2])
-            name = args.save + '/reconstruction_' + args.experiment_name + '.png'
+            name = args.save + '/reconstruction_' + args.experiment_name + '_' + date_string + '.png'
             save_image(x_cat, name, nrow=8)
 
 
@@ -103,11 +106,12 @@ def save_fixed_z_image(args, model, data_shape, logger):
             fixed_z = cvt(torch.randn(number_img, args.z_size))
             generated_sample = model.decode(fixed_z)
 
+        date_string = time.strftime("%Y-%m-%d-%H:%M")
+
         if args.data == "piv":
 
             if args.heterogen:
-                logger.info("learned u vector {}, v vector {}".format(recon_img[0][2][0], recon_img[0][3][0]))
-                logger.info("true u vector {}, v vector {}".format(images[0][2][0], images[0][3][0]))
+                logger.info("fixed_z learned u vector {}, v vector{}".format(generated_sample[0][2][0], generated_sample[0][3][0]))
 
             x_cat_1 = torch.cat([generated_sample[:number_img, 0,:,:]],0).view(-1, 1, data_shape[1], data_shape[2])
             x_cat_2 = torch.cat([generated_sample[:number_img, 1,:,:]],0).view(-1, 1, data_shape[1], data_shape[2])
@@ -116,14 +120,14 @@ def save_fixed_z_image(args, model, data_shape, logger):
 
             count = 0
             for image in images:
-                name = args.save + '/fixed_z_' + args.experiment_name + str(count) + '.png'
+                name = args.save + '/fixed_z_' + args.experiment_name + '_' + date_string + '_' + str(count) + '.png'
                 save_image(image, name, nrow=10 )
                 count += 1
 
         else:
             x_cat = torch.cat([generated_sample[:number_img,0,:,:]],
                     0).view(-1, 1, data_shape[1], data_shape[2])
-            name = args.save + '/fixed_z_' + args.experiment_name + '.png'
+            name = args.save + '/fixed_z_' + args.experiment_name + '_' + date_string + '.png'
             save_image(x_cat, name, nrow=10)
 
 
