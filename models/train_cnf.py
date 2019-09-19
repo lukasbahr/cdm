@@ -179,16 +179,17 @@ def run(args, logger, train_loader, validation_loader, data_shape):
     best_loss = float("inf")
 
     itr = 0
-    train_loader_break = 3000
+    train_loader_break = 50000
+    validation_loader_break = 10000
     break_train = int(train_loader_break/args.batch_size)
-    break_training = 50
+    break_validation = int(validation_loader_break/args.batch_size)
 
     for epoch in range(start_epoch, args.num_epochs):
         logger.info("Epoch {}/{}".format(epoch, args.num_epochs))
         model.train()
         for idx_count, (data) in enumerate(train_loader):
-            #  if idx_count > break_train:
-                #  break
+            if idx_count > break_train:
+                break
 
             if args.data == 'piv':
                 x_, y_ = data['ComImages'],data['AllGenDetails']
@@ -273,6 +274,13 @@ def run(args, logger, train_loader, validation_loader, data_shape):
             tt_meter.update(total_time)
 
             if itr % args.log_freq == 0:
+                with open(args.save +'/' + args.experiment_name + 'bits_dim.csv',
+                                mode='a') as loss_file:
+                    loss_file_writer = csv.writer(loss_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+                    row = [epoch, loss_meter.val, loss_meter.avg, time_meter.val,
+                            time_meter.avg, steps_meter.val, steps_meter.avg]
+                    loss_file_writer.writerow(row)
+
                 log_message = (
                     "Iter {:04d} | Time {:.4f}({:.4f}) | Bit/dim {:.4f}({:.4f}) | "
                     "Steps {:.0f}({:.2f}) | Grad Norm {:.4f}({:.4f}) | Total Time {:.2f}({:.2f})".format(
@@ -299,8 +307,7 @@ def run(args, logger, train_loader, validation_loader, data_shape):
                     losses_vec_images_recon_images = []
 
                     for _,(data) in enumerate(validation_loader):
-                    #  for _,(data) in enumerate(train_loader):
-                        if  _ > break_training:
+                        if  _ > break_validation:
                             break
                         if args.data == 'piv':
                             x_, y_ = data['ComImages'],data['AllGenDetails']

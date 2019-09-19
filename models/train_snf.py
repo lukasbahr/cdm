@@ -85,7 +85,7 @@ def run(args, logger, train_loader, validation_loader, data_shape):
                         labels = torch.zeros([1,28,28])
                         labels.fill_(y_[idx]/10)
 
-                        x[idx, 1,:,:] = labels
+                        x[idx,1,:,:] = labels
 
             elif args.data == 'cifar10' and args.heterogen:
                     x_,y_ = data
@@ -194,8 +194,6 @@ def run(args, logger, train_loader, validation_loader, data_shape):
                                     labels.fill_(y_[idx])
 
                                     x[idx, 3,:,:] = labels
-
-
                         else:
                             x, y = data
 

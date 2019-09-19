@@ -81,6 +81,8 @@ def save_recon_images(args, model, validation_loader, data_shape, logger):
 
         date_string = time.strftime("%Y-%m-%d-%H:%M")
 
+        args.save_recon_images_size = 10
+
         if args.data == "piv":
             if args.heterogen:
                 logger.info("learned u vector {}, v vector {}".format(recon_img[0][2][0], recon_img[0][3][0]))
@@ -90,14 +92,14 @@ def save_recon_images(args, model, validation_loader, data_shape, logger):
                             mode='a') as label_file:
                         label_file_writer = csv.writer(label_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
 
-                        u_recon_list = [recon_img[i][2][0][0] for i in
+                        u_recon_list = [(recon_img[i][2][0][0].item()-0.5)*10 for i in
                                 range(args.save_recon_images_size)]
-                        v_recon_list = [recon_img[i][3][0][0] for i in
+                        v_recon_list = [(recon_img[i][3][0][0].item()-0.5)*10 for i in
                                 range(args.save_recon_images_size)]
 
-                        u_true_list = [images[i][2][0][0] for i in
+                        u_true_list = [(images[i][2][0][0].item()-0.5)*10 for i in
                                 range(args.save_recon_images_size)]
-                        v_true_list = [images[i][3][0][0] for i in
+                        v_true_list = [(images[i][3][0][0].item()-0.5)*10 for i in
                                 range(args.save_recon_images_size)]
 
                         u_recon_list.insert(0,date_string + '_u_recon')
@@ -125,7 +127,7 @@ def save_recon_images(args, model, validation_loader, data_shape, logger):
             count = 0
             for image in images:
                 name = args.save + '/reconstruction_' + args.experiment_name + '_' + date_string + '_' + str(count) + '.png'
-                save_image(image, name, nrow=8 )
+                save_image(image, name, nrow=10 )
                 count += 1
 
         else:
@@ -134,9 +136,9 @@ def save_recon_images(args, model, validation_loader, data_shape, logger):
                         mode='a') as label_file:
                     label_file_writer = csv.writer(label_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
 
-                    label_recon_list = [recon_img[i][1][0][0] for i in
+                    label_recon_list = [recon_img[i][1][0][0].item() for i in
                             range(args.save_recon_images_size)]
-                    label_true_list = [images[i][1][0][0] for i in
+                    label_true_list = [images[i][1][0][0].item() for i in
                             range(args.save_recon_images_size)]
 
                     label_recon_list.insert(0,date_string+'_label_recon')
@@ -159,7 +161,7 @@ def save_recon_images(args, model, validation_loader, data_shape, logger):
 def save_fixed_z_image(args, model, data_shape, logger):
     """ Save samples with fixed z. """
 
-    number_img = 100
+    number_img = 10
 
     with torch.no_grad():
 
@@ -187,10 +189,10 @@ def save_fixed_z_image(args, model, data_shape, logger):
 
                     label_file_writer = csv.writer(label_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
 
-                    u_recon_list = [generated_sample[i][2][0][0].item() for i in
-                            range(args.save_recon_images_size)]
-                    v_recon_list = [generated_sample[i][3][0][0].item() for i in
-                            range(args.save_recon_images_size)]
+                    u_recon_list = [(generated_sample[i][2][0][0].item()-0.5)*10 for i in
+                            range(number_img)]
+                    v_recon_list = [(generated_sample[i][3][0][0].item()-0.5)*10 for i in
+                            range(number_img)]
 
                     u_recon_list.insert(0,date_string + '_u_recon')
                     v_recon_list.insert(0,date_string + '_v_recon')
@@ -216,7 +218,7 @@ def save_fixed_z_image(args, model, data_shape, logger):
                     label_file_writer = csv.writer(label_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
 
                     label_recon_list = [generated_sample[i][1][0][0].item() for i in
-                            range(args.save_recon_images_size)]
+                            range(number_img)]
 
                     label_recon_list.insert(0,date_string+'_label_recon')
 
