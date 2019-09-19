@@ -75,7 +75,7 @@ def save_recon_images(args, model, validation_loader, data_shape, logger):
 
             count = 0
             for image in images:
-                name = args.save + '/reconstruction_' + args.experiment_name + '_' + date_string + '_' str(count) + '.png'
+                name = args.save + '/reconstruction_' + args.experiment_name + '_' + date_string + '_' + str(count) + '.png'
                 save_image(image, name, nrow=8 )
                 count += 1
 

@@ -179,7 +179,9 @@ def get_dataset(args):
         im_size = 28 if args.imagesize is None else args.imagesize
         train_set = dset.MNIST(root="./data", train=True, transform=trans(im_size), download=True)
         test_set = dset.MNIST(root="./data", train=False, transform=trans(im_size), download=True)
-    elif args.data == "piv":
+        if args.heterogen:
+            im_dim = 2
+     elif args.data == "piv":
         im_dim = 2
         im_size = 32 if args.imagesize is None else args.imagesize
         train_set = dataset.H5Dataset("/home/bahr/cdm/data/ISPIV_dataset/Batch_Training-Dataset_2Labels_S12_SynthImg_NCHW_Alex.hdf5")
@@ -198,6 +200,8 @@ def get_dataset(args):
             ]), download=True
         )
         test_set = dset.CIFAR10(root="./data", train=False, transform=trans(im_size), download=True)
+        if args.heterogen:
+            im_dim = 4
 
     data_shape = (im_dim, im_size, im_size)
     if not args.conv:

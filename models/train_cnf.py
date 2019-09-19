@@ -212,6 +212,28 @@ def run(args, logger, train_loader, validation_loader, data_shape):
                     x = x_
                     y = y_
 
+            elif args.data == 'mnist' and args.heterogen:
+                    x_,y_ = data
+
+                    x = torch.zeros([x_.size(0), 2, 28, 28])
+                    x[:,:1,:,:] = x_
+                    for idx in range(x_.size(0)):
+                        labels = torch.zeros([1,28,28])
+                        labels.fill_(y_[idx])
+
+                        x[idx, 1,:,:] = labels
+
+            elif args.data == 'cifar10' and args.heterogen:
+                    x_,y_ = data
+
+                    x = torch.zeros([x_.size(0), 4, 32, 32])
+                    x[:,:3,:,:] = x_
+                    for idx in range(x_.size(0)):
+                        labels = torch.zeros([1,32,32])
+                        labels.fill_(y_[idx])
+
+                        x[idx, 3,:,:] = labels
+
             else:
                 x, y = data
 
@@ -298,6 +320,29 @@ def run(args, logger, train_loader, validation_loader, data_shape):
                             else:
                                 x = x_
                                 y = y_
+
+                        elif args.data == 'mnist' and args.heterogen:
+                            x_,y_ = data
+
+                            x = torch.zeros([x_.size(0), 2, 28, 28])
+                            x[:,:1,:,:] = x_
+                            for idx in range(x_.size(0)):
+                                labels = torch.zeros([1,28,28])
+                                labels.fill_(y_[idx])
+
+                                x[idx, 1,:,:] = labels
+
+                        elif args.data == 'cifar10' and args.heterogen:
+                            x_,y_ = data
+
+                            x = torch.zeros([x_.size(0), 4, 32, 32])
+                            x[:,:3,:,:] = x_
+                            for idx in range(x_.size(0)):
+                                labels = torch.zeros([1,32,32])
+                                labels.fill_(y_[idx])
+
+                                x[idx, 3,:,:] = labels
+
                         else:
                             x, y = data
 
