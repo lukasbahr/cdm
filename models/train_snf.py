@@ -72,16 +72,36 @@ def run(args, logger, train_loader, validation_loader, data_shape):
                         x[idx, 2,:,:] = u_vector
                         x[idx, 3,:,:] = v_vector
 
-                        x = x.to(device)
-
                 else:
                     x = x_
                     y = y_
 
-                    x = x.to(device)
+            elif args.data == 'mnist' and args.heterogen:
+                    x_,y_ = data
+
+                    x = torch.zeros([x_.size(0), 2, 28, 28])
+                    x[:,:1,:,:] = x_
+                    for idx in range(x_.size(0)):
+                        labels = torch.zeros([1,28,28])
+                        labels.fill_(y_[idx])
+
+                        x[idx, 1,:,:] = labels
+
+            elif args.data == 'cifar10' and args.heterogen:
+                    x_,y_ = data
+
+                    x = torch.zeros([x_.size(0), 4, 32, 32])
+                    x[:,:3,:,:] = x_
+                    for idx in range(x_.size(0)):
+                        labels = torch.zeros([1,32,32])
+                        labels.fill_(y_[idx])
+
+                        x[idx, 3,:,:] = labels
+
             else:
                 x, y = data
-                x = x.to(device)
+
+            x = x.to(device)
 
             start = time.time()
             optimizer.zero_grad()
@@ -146,16 +166,40 @@ def run(args, logger, train_loader, validation_loader, data_shape):
 
                                     x[idx, 2,:,:] = u_vector
                                     x[idx, 3,:,:] = v_vector
-                                    x = x.to(device)
 
                             else:
                                 x = x_
                                 y = y_
 
-                                x = x.to(device)
+
+                        elif args.data == 'mnist' and args.heterogen:
+                                x_,y_ = data
+
+                                x = torch.zeros([x_.size(0), 2, 28, 28])
+                                x[:,:1,:,:] = x_
+                                for idx in range(x_.size(0)):
+                                    labels = torch.zeros([1,28,28])
+                                    labels.fill_(y_[idx])
+
+                                    x[idx, 1,:,:] = labels
+
+
+                        elif args.data == 'cifar10' and args.heterogen:
+                                x_,y_ = data
+
+                                x = torch.zeros([x_.size(0), 4, 32, 32])
+                                x[:,:3,:,:] = x_
+                                for idx in range(x_.size(0)):
+                                    labels = torch.zeros([1,32,32])
+                                    labels.fill_(y_[idx])
+
+                                    x[idx, 3,:,:] = labels
+
+
                         else:
                             x, y = data
-                            x = x.to(device)
+
+                        x = x.to(device)
 
                         recon_images, z_mu, z_var, ldj, z0, z_k = model(x)
                         loss, rec, kl = loss_function.binary_loss_function(recon_images, x, z_mu, z_var, z0, z_k, ldj, beta)
