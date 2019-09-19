@@ -81,8 +81,6 @@ def save_recon_images(args, model, validation_loader, data_shape, logger):
 
         date_string = time.strftime("%Y-%m-%d-%H:%M")
 
-        args.save_recon_images_size = 10
-
         if args.data == "piv":
             if args.heterogen:
                 logger.info("learned u vector {}, v vector {}".format(recon_img[0][2][0], recon_img[0][3][0]))

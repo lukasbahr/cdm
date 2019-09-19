@@ -4,6 +4,7 @@ import argparse
 import os
 import time
 import numpy as np
+import csv
 
 import torch
 import torch.optim as optim
@@ -179,8 +180,8 @@ def run(args, logger, train_loader, validation_loader, data_shape):
     best_loss = float("inf")
 
     itr = 0
-    train_loader_break = 50000
-    validation_loader_break = 10000
+    train_loader_break = 10000
+    validation_loader_break = 2000
     break_train = int(train_loader_break/args.batch_size)
     break_validation = int(validation_loader_break/args.batch_size)
 
