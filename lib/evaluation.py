@@ -4,6 +4,7 @@ import torch
 from torchvision.utils import save_image
 
 import matplotlib.pyplot as plt
+import csv
 import time
 import numpy as np
 from scipy.stats import norm
@@ -35,14 +36,35 @@ def save_recon_images(args, model, validation_loader, data_shape, logger):
                     x[idx, 2,:,:] = u_vector
                     x[idx, 3,:,:] = v_vector
 
-                    x = x.to(device)
-
             else:
-                x = x_.to(device)
-                y = y_.to(device)
+                x = x_
+
+        elif args.data == 'mnist' and args.heterogen:
+                x_,y_ = data
+
+                x = torch.zeros([x_.size(0), 2, 28, 28])
+                x[:,:1,:,:] = x_
+                for idx in range(x_.size(0)):
+                    labels = torch.zeros([1,28,28])
+                    labels.fill_(y_[idx].item()/10)
+
+                    x[idx, 1,:,:] = labels
+
+        elif args.data == 'cifar10' and args.heterogen:
+                x_,y_ = data
+
+                x = torch.zeros([x_.size(0), 4, 32, 32])
+                x[:,:3,:,:] = x_
+                for idx in range(x_.size(0)):
+                    labels = torch.zeros([1,32,32])
+                    labels.fill_(y_[idx])
+
+                    x[idx, 3,:,:] = labels
+
         else:
             x, y = data
-            x = x.to(device)
+
+        x = x.to(device)
 
         if args.model == "ffjord":
             # In order to get the reconstructed images we need to run the model
@@ -64,6 +86,33 @@ def save_recon_images(args, model, validation_loader, data_shape, logger):
                 logger.info("learned u vector {}, v vector {}".format(recon_img[0][2][0], recon_img[0][3][0]))
                 logger.info("true u vector {}, v vector {}".format(images[0][2][0], images[0][3][0]))
 
+            with open(args.save +'/' + args.experiment_name + '.csv',
+                            mode='a') as label_file:
+                        label_file_writer = csv.writer(label_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+
+                        u_recon_list = [recon_img[i][2][0][0] for i in
+                                range(args.save_recon_images_size)]
+                        v_recon_list = [recon_img[i][3][0][0] for i in
+                                range(args.save_recon_images_size)]
+
+                        u_true_list = [images[i][2][0][0] for i in
+                                range(args.save_recon_images_size)]
+                        v_true_list = [images[i][3][0][0] for i in
+                                range(args.save_recon_images_size)]
+
+                        u_recon_list.insert(0,date_string + '_u_recon')
+                        v_recon_list.insert(0,date_string + '_v_recon')
+
+                        u_true_list.insert(0,date_string + '_u_true')
+                        v_true_list.insert(0,date_string + '_v_true')
+
+                        label_file_writer.writerow(u_recon_list)
+                        label_file_writer.writerow(v_recon_list)
+
+                        label_file_writer.writerow(u_true_list)
+                        label_file_writer.writerow(v_true_list)
+
+
             x_cat_1 = torch.cat([images[:args.save_recon_images_size,0,:,:],
                 recon_img[:args.save_recon_images_size,0,:,:]],
                     0).view(-1, 1, data_shape[1], data_shape[2])
@@ -80,6 +129,26 @@ def save_recon_images(args, model, validation_loader, data_shape, logger):
                 count += 1
 
         else:
+            if args.data == "mnist" and args.heterogen:
+                with open(args.save +'/' + args.experiment_name + '.csv',
+                        mode='a') as label_file:
+                    label_file_writer = csv.writer(label_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+
+                    label_recon_list = [recon_img[i][1][0][0] for i in
+                            range(args.save_recon_images_size)]
+                    label_true_list = [images[i][1][0][0] for i in
+                            range(args.save_recon_images_size)]
+
+                    label_recon_list.insert(0,date_string+'_label_recon')
+                    label_true_list.insert(0,date_string+'_label_true')
+
+                    label_file_writer.writerow(label_recon_list)
+                    label_file_writer.writerow(label_true_list)
+
+
+                logger.info("learned labels {}".format(recon_img[0][1][0]))
+                logger.info("true labels {}".format(images[0][1][0]))
+
             x_cat = torch.cat([images[:args.save_recon_images_size,0,:,:],
                 recon_img[:args.save_recon_images_size,0,:,:]],
                     0).view(-1, 1, data_shape[1], data_shape[2])
@@ -113,6 +182,22 @@ def save_fixed_z_image(args, model, data_shape, logger):
             if args.heterogen:
                 logger.info("fixed_z learned u vector {}, v vector{}".format(generated_sample[0][2][0], generated_sample[0][3][0]))
 
+                with open(args.save +'/' + args.experiment_name + '_fixed_z.csv',
+                            mode='a') as label_file:
+
+                    label_file_writer = csv.writer(label_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+
+                    u_recon_list = [generated_sample[i][2][0][0].item() for i in
+                            range(args.save_recon_images_size)]
+                    v_recon_list = [generated_sample[i][3][0][0].item() for i in
+                            range(args.save_recon_images_size)]
+
+                    u_recon_list.insert(0,date_string + '_u_recon')
+                    v_recon_list.insert(0,date_string + '_v_recon')
+
+                    label_file_writer.writerow(u_recon_list)
+                    label_file_writer.writerow(v_recon_list)
+
             x_cat_1 = torch.cat([generated_sample[:number_img, 0,:,:]],0).view(-1, 1, data_shape[1], data_shape[2])
             x_cat_2 = torch.cat([generated_sample[:number_img, 1,:,:]],0).view(-1, 1, data_shape[1], data_shape[2])
 
@@ -125,6 +210,18 @@ def save_fixed_z_image(args, model, data_shape, logger):
                 count += 1
 
         else:
+            if args.data == "mnist" and args.heterogen:
+                with open(args.save +'/' + args.experiment_name + '_fixed_z.csv',
+                        mode='a') as label_file:
+                    label_file_writer = csv.writer(label_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+
+                    label_recon_list = [generated_sample[i][1][0][0].item() for i in
+                            range(args.save_recon_images_size)]
+
+                    label_recon_list.insert(0,date_string+'_label_recon')
+
+                    label_file_writer.writerow(label_recon_list)
+
             x_cat = torch.cat([generated_sample[:number_img,0,:,:]],
                     0).view(-1, 1, data_shape[1], data_shape[2])
             name = args.save + '/fixed_z_' + args.experiment_name + '_' + date_string + '.png'

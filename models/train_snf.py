@@ -83,7 +83,7 @@ def run(args, logger, train_loader, validation_loader, data_shape):
                     x[:,:1,:,:] = x_
                     for idx in range(x_.size(0)):
                         labels = torch.zeros([1,28,28])
-                        labels.fill_(y_[idx])
+                        labels.fill_(y_[idx]/10)
 
                         x[idx, 1,:,:] = labels
 
@@ -179,7 +179,7 @@ def run(args, logger, train_loader, validation_loader, data_shape):
                                 x[:,:1,:,:] = x_
                                 for idx in range(x_.size(0)):
                                     labels = torch.zeros([1,28,28])
-                                    labels.fill_(y_[idx])
+                                    labels.fill_(y_[idx]/10)
 
                                     x[idx, 1,:,:] = labels
 
