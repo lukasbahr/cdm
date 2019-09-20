@@ -180,8 +180,8 @@ def run(args, logger, train_loader, validation_loader, data_shape):
     best_loss = float("inf")
 
     itr = 0
-    train_loader_break = 10000
-    validation_loader_break = 2000
+    train_loader_break = 512
+    validation_loader_break = 512
     break_train = int(train_loader_break/args.batch_size)
     break_validation = int(validation_loader_break/args.batch_size)
 
@@ -233,9 +233,10 @@ def run(args, logger, train_loader, validation_loader, data_shape):
                     x[:,:3,:,:] = x_
                     for idx in range(x_.size(0)):
                         labels = torch.zeros([1,32,32])
-                        labels.fill_(y_[idx])
+                        labels.fill_(y_[idx].item()/10)
 
                         x[idx, 3,:,:] = labels
+
 
             else:
                 x, y = data
@@ -348,7 +349,7 @@ def run(args, logger, train_loader, validation_loader, data_shape):
                             x[:,:3,:,:] = x_
                             for idx in range(x_.size(0)):
                                 labels = torch.zeros([1,32,32])
-                                labels.fill_(y_[idx])
+                                labels.fill_(y_[idx].item()/10)
 
                                 x[idx, 3,:,:] = labels
 

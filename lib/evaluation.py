@@ -5,6 +5,7 @@ from torchvision.utils import save_image
 
 import matplotlib.pyplot as plt
 import csv
+import datetime
 import time
 import numpy as np
 from scipy.stats import norm
@@ -28,10 +29,10 @@ def save_recon_images(args, model, validation_loader, data_shape, logger):
                 x[:,:2,:,:] = x_
                 for idx in range(x_.size(0)):
                     u_vector = torch.zeros([1,32,32])
-                    u_vector.fill_(y_[idx][0]/20*0.5 + 0.5)
+                    u_vector.fill_((y_[idx][0]/20)*0.5 + 0.5)
 
                     v_vector = torch.zeros([1,32,32])
-                    v_vector.fill_(y_[idx][1]/20*0.5 + 0.5)
+                    v_vector.fill_((y_[idx][1]/20)*0.5 + 0.5)
 
                     x[idx, 2,:,:] = u_vector
                     x[idx, 3,:,:] = v_vector
@@ -57,7 +58,7 @@ def save_recon_images(args, model, validation_loader, data_shape, logger):
                 x[:,:3,:,:] = x_
                 for idx in range(x_.size(0)):
                     labels = torch.zeros([1,32,32])
-                    labels.fill_(y_[idx])
+                    labels.fill_(y_[idx]/10)
 
                     x[idx, 3,:,:] = labels
 
@@ -128,8 +129,8 @@ def save_recon_images(args, model, validation_loader, data_shape, logger):
                 save_image(image, name, nrow=10 )
                 count += 1
 
-        else:
-            if args.data == "mnist" and args.heterogen:
+        elif args.data == "mnist":
+            if args.heterogen:
                 with open(args.save +'/' + args.experiment_name + '.csv',
                         mode='a') as label_file:
                     label_file_writer = csv.writer(label_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
@@ -153,13 +154,41 @@ def save_recon_images(args, model, validation_loader, data_shape, logger):
                 recon_img[:args.save_recon_images_size,0,:,:]],
                     0).view(-1, 1, data_shape[1], data_shape[2])
             name = args.save + '/reconstruction_' + args.experiment_name + '_' + date_string + '.png'
-            save_image(x_cat, name, nrow=8)
+            save_image(x_cat, name, nrow=10)
+
+        elif args.data == "cifar10":
+            if args.heterogen:
+                with open(args.save +'/' + args.experiment_name + '.csv',
+                        mode='a') as label_file:
+                    label_file_writer = csv.writer(label_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+
+                    label_recon_list = [recon_img[i][3][0][0].item() for i in
+                            range(args.save_recon_images_size)]
+                    label_true_list = [images[i][3][0][0].item() for i in
+                            range(args.save_recon_images_size)]
+
+                    label_recon_list.insert(0,date_string+'_label_recon')
+                    label_true_list.insert(0,date_string+'_label_true')
+
+                    label_file_writer.writerow(label_recon_list)
+                    label_file_writer.writerow(label_true_list)
 
 
-def save_fixed_z_image(args, model, data_shape, logger):
+                logger.info("learned labels {}".format(recon_img[0][3][0]))
+                logger.info("true labels {}".format(images[0][3][0]))
+
+            x_cat = torch.cat([images[:args.save_recon_images_size,:3,:,:],
+                recon_img[:args.save_recon_images_size,:3,:,:]],
+                    0).view(-1, 1, data_shape[1], data_shape[2])
+            name = args.save + '/reconstruction_' + args.experiment_name + '_' + date_string + '.png'
+            save_image(x_cat, name, nrow=10)
+
+
+
+def save_fixed_z_image(args, model, data_shape, logger, epoch):
     """ Save samples with fixed z. """
 
-    number_img = 10
+    number_img = 1
 
     with torch.no_grad():
 
@@ -175,12 +204,16 @@ def save_fixed_z_image(args, model, data_shape, logger):
             fixed_z = cvt(torch.randn(number_img, args.z_size))
             generated_sample = model.decode(fixed_z)
 
-        date_string = time.strftime("%Y-%m-%d-%H:%M")
+        ts = time.time()
+        date_string = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
+        #  date_string = time.strftime("%Y-%m-%d-%H:%M")
+        time.sleep(1)
 
+        stemp = 0
         if args.data == "piv":
 
             if args.heterogen:
-                logger.info("fixed_z learned u vector {}, v vector{}".format(generated_sample[0][2][0], generated_sample[0][3][0]))
+                logger.debug("fixed_z learned u vector {}, v vector{}".format(generated_sample[0][2][0], generated_sample[0][3][0]))
 
                 with open(args.save +'/' + args.experiment_name + '_fixed_z.csv',
                             mode='a') as label_file:
@@ -192,8 +225,8 @@ def save_fixed_z_image(args, model, data_shape, logger):
                     v_recon_list = [(generated_sample[i][3][0][0].item()-0.5)*10 for i in
                             range(number_img)]
 
-                    u_recon_list.insert(0,date_string + '_u_recon')
-                    v_recon_list.insert(0,date_string + '_v_recon')
+                    u_recon_list.insert(0,str(epoch) + '_u_recon')
+                    v_recon_list.insert(0,str(epoch) + '_v_recon')
 
                     label_file_writer.writerow(u_recon_list)
                     label_file_writer.writerow(v_recon_list)
@@ -205,12 +238,12 @@ def save_fixed_z_image(args, model, data_shape, logger):
 
             count = 0
             for image in images:
-                name = args.save + '/fixed_z_' + args.experiment_name + '_' + date_string + '_' + str(count) + '.png'
+                name = args.save + '/fixed_z_' + args.experiment_name + '_' + str(epoch) + '_' + str(count) + '.png'
                 save_image(image, name, nrow=10 )
                 count += 1
 
-        else:
-            if args.data == "mnist" and args.heterogen:
+        elif args.data == "mnist":
+            if args.heterogen:
                 with open(args.save +'/' + args.experiment_name + '_fixed_z.csv',
                         mode='a') as label_file:
                     label_file_writer = csv.writer(label_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
@@ -222,7 +255,28 @@ def save_fixed_z_image(args, model, data_shape, logger):
 
                     label_file_writer.writerow(label_recon_list)
 
-            x_cat = torch.cat([generated_sample[:number_img,0,:,:]],
+            x_cat = torch.cat([generated_sample[:number_img,:1,:,:]],
+                    0).view(-1, 1, data_shape[1], data_shape[2])
+            name = args.save + '/fixed_z_' + args.experiment_name + '_' + date_string + '.png'
+            save_image(x_cat, name, nrow=10)
+
+
+        elif args.data == "cifar10":
+            if args.heterogen:
+                with open(args.save +'/' + args.experiment_name + '_fixed_z.csv',
+                        mode='a') as label_file:
+                    label_file_writer = csv.writer(label_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+
+                    label_recon_list = [generated_sample[i][3][0][0].item() for i in
+                            range(number_img)]
+
+                    label_recon_list.insert(0,date_string+'_label_recon')
+
+                    label_file_writer.writerow(label_recon_list)
+
+            #  x_cat = generated_sample.view(-1. *data_shape)
+
+            x_cat = torch.cat([generated_sample[:number_img,:1,:,:]],
                     0).view(-1, 1, data_shape[1], data_shape[2])
             name = args.save + '/fixed_z_' + args.experiment_name + '_' + date_string + '.png'
             save_image(x_cat, name, nrow=10)
