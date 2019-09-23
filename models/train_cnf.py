@@ -129,6 +129,59 @@ def create_model(args, data_shape, regularization_fns):
     return model
 
 
+def extract(data, args):
+
+    if args.data == 'piv':
+        x_, y_ = data['ComImages'],data['AllGenDetails']
+
+        if args.heterogen:
+            x = torch.zeros([x_.size(0), 4, 32, 32])
+            x[:,:2,:,:] = x_
+            for idx in range(x_.size(0)):
+                u_vector = torch.zeros([1,32,32])
+                u_vector.fill_(y_[idx][0]/20*0.5 + 0.5)
+
+                v_vector = torch.zeros([1,32,32])
+                v_vector.fill_(y_[idx][1]/20*0.5 + 0.5)
+
+                x[idx, 2,:,:] = u_vector
+                x[idx, 3,:,:] = v_vector
+
+        else:
+            x = x_
+            y = y_
+
+    elif args.data == 'mnist' and args.heterogen:
+            x_,y_ = data
+
+            x = torch.zeros([x_.size(0), 2, 28, 28])
+            x[:,:1,:,:] = x_
+            for idx in range(x_.size(0)):
+                labels = torch.zeros([1,28,28])
+                labels.fill_((y_[idx].item()/10))
+
+                x[idx, 1,:,:] = labels
+
+    elif args.data == 'cifar10' and args.heterogen:
+            x_,y_ = data
+
+            x = torch.zeros([x_.size(0), 4, 32, 32])
+            x[:,:3,:,:] = x_
+            for idx in range(x_.size(0)):
+                labels = torch.zeros([1,32,32])
+                labels.fill_(y_[idx].item()/10)
+
+                x[idx, 3,:,:] = labels
+
+    else:
+        x, y = data
+
+    if args.heterogen:
+        return x
+    else:
+        return x, y
+
+
 def run(args, logger, train_loader, validation_loader, data_shape):
 
     # get device
@@ -187,58 +240,17 @@ def run(args, logger, train_loader, validation_loader, data_shape):
 
     for epoch in range(start_epoch, args.num_epochs):
         logger.info("Epoch {}/{}".format(epoch, args.num_epochs))
+
         model.train()
+
         for idx_count, (data) in enumerate(train_loader):
             if idx_count > break_train:
                 break
 
-            if args.data == 'piv':
-                x_, y_ = data['ComImages'],data['AllGenDetails']
-
-                if args.heterogen:
-                    x = torch.zeros([x_.size(0), 4, 32, 32])
-                    x[:,:2,:,:] = x_
-                    for idx in range(x_.size(0)):
-                        u_vector = torch.zeros([1,32,32])
-                        u_vector.fill_(y_[idx][0]/20*0.5 + 0.5)
-
-                        v_vector = torch.zeros([1,32,32])
-                        v_vector.fill_(y_[idx][1]/20*0.5 + 0.5)
-
-                        x[idx, 2,:,:] = u_vector
-                        x[idx, 3,:,:] = v_vector
-
-                    #  import pdb; pdb.set_trace()
-
-                else:
-                    x = x_
-                    y = y_
-
-            elif args.data == 'mnist' and args.heterogen:
-                    x_,y_ = data
-
-                    x = torch.zeros([x_.size(0), 2, 28, 28])
-                    x[:,:1,:,:] = x_
-                    for idx in range(x_.size(0)):
-                        labels = torch.zeros([1,28,28])
-                        labels.fill_((y_[idx].item()/10))
-
-                        x[idx, 1,:,:] = labels
-
-            elif args.data == 'cifar10' and args.heterogen:
-                    x_,y_ = data
-
-                    x = torch.zeros([x_.size(0), 4, 32, 32])
-                    x[:,:3,:,:] = x_
-                    for idx in range(x_.size(0)):
-                        labels = torch.zeros([1,32,32])
-                        labels.fill_(y_[idx].item()/10)
-
-                        x[idx, 3,:,:] = labels
-
-
+            if args.heterogen:
+                x = extract(data, args)
             else:
-                x, y = data
+                x, y = extract(data, args)
 
             start = time.time()
             update_lr(args, optimizer, itr)
@@ -310,53 +322,16 @@ def run(args, logger, train_loader, validation_loader, data_shape):
                     for _,(data) in enumerate(validation_loader):
                         if  _ > break_validation:
                             break
-                        if args.data == 'piv':
-                            x_, y_ = data['ComImages'],data['AllGenDetails']
 
-                            if args.heterogen:
-                                x = torch.zeros([x_.size(0), 4, 32, 32])
-                                x[:,:2,:,:] = x_
-                                for idx in range(x_.size(0)):
-                                    u_vector = torch.zeros([1,32,32])
-                                    u_vector.fill_(y_[idx][0]/20*0.5 + 0.5)
-
-                                    v_vector = torch.zeros([1,32,32])
-                                    v_vector.fill_(y_[idx][1]/20*0.5 + 0.5)
-
-                                    x[idx, 2,:,:] = u_vector
-                                    x[idx, 3,:,:] = v_vector
-
-                            else:
-                                x = x_
-                                y = y_
-
-                        elif args.data == 'mnist' and args.heterogen:
-                            x_,y_ = data
-
-                            x = torch.zeros([x_.size(0), 2, 28, 28])
-                            x[:,:1,:,:] = x_
-                            for idx in range(x_.size(0)):
-                                labels = torch.zeros([1,28,28])
-                                labels.fill_((y_[idx].item()/10))
-
-                                x[idx, 1,:,:] = labels
-
-                        elif args.data == 'cifar10' and args.heterogen:
-                            x_,y_ = data
-
-                            x = torch.zeros([x_.size(0), 4, 32, 32])
-                            x[:,:3,:,:] = x_
-                            for idx in range(x_.size(0)):
-                                labels = torch.zeros([1,32,32])
-                                labels.fill_(y_[idx].item()/10)
-
-                                x[idx, 3,:,:] = labels
-
+                        if args.heterogen:
+                            x = extract(data, args)
                         else:
-                            x, y = data
+                            x, y = extract(data, args)
+
 
                         if not args.conv:
                             x = x.view(x.shape[0], -1)
+
                         x = cvt(x)
 
                         zero = torch.zeros(x.shape[0], 1).to(x)
