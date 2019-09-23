@@ -180,8 +180,8 @@ def run(args, logger, train_loader, validation_loader, data_shape):
     best_loss = float("inf")
 
     itr = 0
-    train_loader_break = 512
-    validation_loader_break = 512
+    train_loader_break = 1000000
+    validation_loader_break = 5000
     break_train = int(train_loader_break/args.batch_size)
     break_validation = int(validation_loader_break/args.batch_size)
 
@@ -221,10 +221,9 @@ def run(args, logger, train_loader, validation_loader, data_shape):
                     x[:,:1,:,:] = x_
                     for idx in range(x_.size(0)):
                         labels = torch.zeros([1,28,28])
-                        labels.fill_(y_[idx].item()/10)
+                        labels.fill_((y_[idx].item()/10))
 
                         x[idx, 1,:,:] = labels
-                    #  import pdb; pdb.set_trace()
 
             elif args.data == 'cifar10' and args.heterogen:
                     x_,y_ = data
@@ -338,7 +337,7 @@ def run(args, logger, train_loader, validation_loader, data_shape):
                             x[:,:1,:,:] = x_
                             for idx in range(x_.size(0)):
                                 labels = torch.zeros([1,28,28])
-                                labels.fill_(y_[idx].item()/10)
+                                labels.fill_((y_[idx].item()/10))
 
                                 x[idx, 1,:,:] = labels
 
