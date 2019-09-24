@@ -309,29 +309,71 @@ def save_fixed_z_image(args, model, data_shape, logger):
             save_image(x_cat, name, nrow=10)
 
 
-def save_2D_manifold(args, model, data_shape):
+def save_2D_manifold(args, model, data_shape, validation_loader):
+    with torch.no_grad():
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    n = 15
-    digit_size = data_shape[1]
-    figure = np.zeros((digit_size*n, digit_size*n))
+        validation_set_enumerate = enumerate(validation_loader)
 
-    grid_x = norm.ppf(np.linspace(0.05,0.95, n))
-    grid_y = norm.ppf(np.linspace(0.05,0.95, n))
+        _, data = next(validation_set_enumerate)
 
-    for i, yi in enumerate(grid_x):
-        for j, xi in enumerate(grid_y):
-            z_sample = torch.Tensor([xi, yi])
-            z_sample = z_sample.to(device)
-            recon_img = model.decode(z_sample)
-            digit = recon_img[0].reshape(digit_size, digit_size)
-            figure[i * digit_size: (i+1)*digit_size, j * digit_size:(j + 1) *
-                    digit_size] = digit
+        if args.heterogen:
+            x = extract(data, args)
+        else:
+            x, y = extract(data, args)
 
-    plt.figure(figsize=(10, 10))
-    plt.imshow(figure, cmap='gray')
-    plt.show()
+        x = x.to(device)
 
+        number_img = 16
+
+        if args.model == "ffjord":
+            zero = torch.zeros(x.shape[0], 1).to(x)
+            z, delta_logp = model(x, zero)  # run model forward
+
+            min_val = torch.min(z[0])
+            max_val = torch.max(z[0])
+
+            z_uniform = torch.FloatTensor(number_img, *data_shape).uniform_(min_val,
+                    max_val)
+
+            sample = model(z_uniform, reverse=True)
+            sample = sample.cpu()
+
+        if args.data == "mnist":
+            if args.heterogen:
+
+                with open(args.save +'/' + args.experiment_name + '_manifold.csv',
+                        mode='a') as label_file:
+                    label_file_writer = csv.writer(label_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+                    label_recon_list = [generated_sample[i][1][0][0].item() for i in
+                            range(number_img)]
+                    label_recon_list.insert(0,date_string+'_label_recon')
+                    label_file_writer.writerow(label_recon_list)
+
+            x_cat = torch.cat([samples[:number_img,:1,:,:]],
+                    0).view(-1, 1, 28, 28)
+            name = args.save + '/manifold_' + args.experiment_name + '_' + date_string + '.png'
+            save_image(x_cat, name, nrow=4)
+
+    #  n = 15
+    #  digit_size = data_shape[1]
+    #  figure = np.zeros((digit_size*n, digit_size*n))
+    #
+    #  grid_x = norm.ppf(np.linspace(0.05,0.95, n))
+    #  grid_y = norm.ppf(np.linspace(0.05,0.95, n))
+    #
+    #  for i, yi in enumerate(grid_x):
+    #      for j, xi in enumerate(grid_y):
+    #          z_sample = torch.Tensor([xi, yi])
+    #          z_sample = z_sample.to(device)
+    #          recon_img = model.decode(z_sample)
+    #          digit = recon_img[0].reshape(digit_size, digit_size)
+    #          figure[i * digit_size: (i+1)*digit_size, j * digit_size:(j + 1) *
+    #                  digit_size] = digit
+    #
+    #  plt.figure(figsize=(10, 10))
+    #  plt.imshow(figure, cmap='gray')
+    #  plt.show()
 
 def scatter(args, x, colors):
     # choose a color palette with seaborn.
@@ -365,7 +407,7 @@ def scatter(args, x, colors):
 
 
     date_string = time.strftime("%Y-%m-%d-%H:%M")
-    name = args.save + '/t_sne' + args.experiment_name + '_' + date_string + '.png'
+    name = args.save + '/t_sne_' + args.experiment_name + '_' + date_string + '.png'
     plt.savefig(name)
     plt.close()
 

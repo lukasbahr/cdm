@@ -361,10 +361,11 @@ def run(args, logger, train_loader, validation_loader, data_shape):
                     data_shape, logger)
 
             evaluation.save_fixed_z_image(args, model, data_shape, logger)
-
             #  evaluation.tsne(args, model, data_shape, logger)
 
             if args.data == "piv":
                 evaluation.tsne_x(args, model, validation_loader, data_shape, logger)
 
+                evaluation.save_2D_manifold(args, model, data_shape,
+                        validation_loader)
 
