@@ -9,6 +9,17 @@ import datetime
 import time
 import numpy as np
 from scipy.stats import norm
+from sklearn.manifold import TSNE
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.patheffects as PathEffects
+import seaborn as sns
+
+sns.set_style('darkgrid')
+sns.set_palette('muted')
+sns.set_context("notebook", font_scale=1.5,  rc={"lines.linewidth": 2.5})
 
 def extract(data, args):
 
@@ -62,6 +73,53 @@ def extract(data, args):
     else:
         return x, y
 
+def write_csv(args, recon_img, images):
+    date_string = time.strftime("%Y-%m-%d-%H:%M")
+
+    if args.data == 'piv':
+        with open(args.save +'/' + args.experiment_name + '.csv',
+                        mode='a') as label_file:
+
+            label_file_writer = csv.writer(label_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+
+            u_recon_list = [(recon_img[i][2][0][0].item()-0.5)*10 for i in
+                    range(args.save_recon_images_size)]
+            v_recon_list = [(recon_img[i][3][0][0].item()-0.5)*10 for i in
+                    range(args.save_recon_images_size)]
+
+            u_true_list = [(images[i][2][0][0].item()-0.5)*10 for i in
+                    range(args.save_recon_images_size)]
+            v_true_list = [(images[i][3][0][0].item()-0.5)*10 for i in
+                    range(args.save_recon_images_size)]
+
+            u_recon_list.insert(0,date_string + '_u_recon')
+            v_recon_list.insert(0,date_string + '_v_recon')
+
+            u_true_list.insert(0,date_string + '_u_true')
+            v_true_list.insert(0,date_string + '_v_true')
+
+            label_file_writer.writerow(u_recon_list)
+            label_file_writer.writerow(v_recon_list)
+
+            label_file_writer.writerow(u_true_list)
+            label_file_writer.writerow(v_true_list)
+
+    else:
+        with open(args.save +'/' + args.experiment_name + '.csv',
+                mode='a') as label_file:
+            label_file_writer = csv.writer(label_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+
+            label_recon_list = [recon_img[i][1][0][0].item() for i in
+                    range(args.save_recon_images_size)]
+            label_true_list = [images[i][1][0][0].item() for i in
+                    range(args.save_recon_images_size)]
+
+            label_recon_list.insert(0,date_string+'_label_recon')
+            label_true_list.insert(0,date_string+'_label_true')
+
+            label_file_writer.writerow(label_recon_list)
+            label_file_writer.writerow(label_true_list)
+
 
 
 def save_recon_images(args, model, validation_loader, data_shape, logger):
@@ -107,34 +165,10 @@ def save_recon_images(args, model, validation_loader, data_shape, logger):
 
         if args.data == "piv":
             if args.heterogen:
+                write_csv(args, recon_img, images)
+
                 logger.info("learned u vector {}, v vector {}".format(recon_img[0][2][0], recon_img[0][3][0]))
                 logger.info("true u vector {}, v vector {}".format(images[0][2][0], images[0][3][0]))
-
-            with open(args.save +'/' + args.experiment_name + '.csv',
-                            mode='a') as label_file:
-                        label_file_writer = csv.writer(label_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-
-                        u_recon_list = [(recon_img[i][2][0][0].item()-0.5)*10 for i in
-                                range(args.save_recon_images_size)]
-                        v_recon_list = [(recon_img[i][3][0][0].item()-0.5)*10 for i in
-                                range(args.save_recon_images_size)]
-
-                        u_true_list = [(images[i][2][0][0].item()-0.5)*10 for i in
-                                range(args.save_recon_images_size)]
-                        v_true_list = [(images[i][3][0][0].item()-0.5)*10 for i in
-                                range(args.save_recon_images_size)]
-
-                        u_recon_list.insert(0,date_string + '_u_recon')
-                        v_recon_list.insert(0,date_string + '_v_recon')
-
-                        u_true_list.insert(0,date_string + '_u_true')
-                        v_true_list.insert(0,date_string + '_v_true')
-
-                        label_file_writer.writerow(u_recon_list)
-                        label_file_writer.writerow(v_recon_list)
-
-                        label_file_writer.writerow(u_true_list)
-                        label_file_writer.writerow(v_true_list)
 
 
             x_cat_1 = torch.cat([images[:args.save_recon_images_size,0,:,:],
@@ -154,22 +188,7 @@ def save_recon_images(args, model, validation_loader, data_shape, logger):
 
         elif args.data == "mnist":
             if args.heterogen:
-                #  import pdb; pdb.set_trace()
-                with open(args.save +'/' + args.experiment_name + '.csv',
-                        mode='a') as label_file:
-                    label_file_writer = csv.writer(label_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-
-                    label_recon_list = [recon_img[i][1][0][0].item() for i in
-                            range(args.save_recon_images_size)]
-                    label_true_list = [images[i][1][0][0].item() for i in
-                            range(args.save_recon_images_size)]
-
-                    label_recon_list.insert(0,date_string+'_label_recon')
-                    label_true_list.insert(0,date_string+'_label_true')
-
-                    label_file_writer.writerow(label_recon_list)
-                    label_file_writer.writerow(label_true_list)
-
+                write_csv(args, recon_img, images)
 
                 logger.info("learned labels {}".format(recon_img[0][1][0]))
                 logger.info("true labels {}".format(images[0][1][0]))
@@ -182,21 +201,7 @@ def save_recon_images(args, model, validation_loader, data_shape, logger):
 
         elif args.data == "cifar10":
             if args.heterogen:
-                with open(args.save +'/' + args.experiment_name + '.csv',
-                        mode='a') as label_file:
-                    label_file_writer = csv.writer(label_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-
-                    label_recon_list = [recon_img[i][3][0][0].item() for i in
-                            range(args.save_recon_images_size)]
-                    label_true_list = [images[i][3][0][0].item() for i in
-                            range(args.save_recon_images_size)]
-
-                    label_recon_list.insert(0,date_string+'_label_recon')
-                    label_true_list.insert(0,date_string+'_label_true')
-
-                    label_file_writer.writerow(label_recon_list)
-                    label_file_writer.writerow(label_true_list)
-
+                write_csv(args, recon_img, images)
 
                 logger.info("learned labels {}".format(recon_img[0][3][0]))
                 logger.info("true labels {}".format(images[0][3][0]))
@@ -298,7 +303,6 @@ def save_fixed_z_image(args, model, data_shape, logger):
 
                     label_file_writer.writerow(label_recon_list)
 
-            #  x_cat = generated_sample.view(-1. *data_shape)
 
             x_cat = torch.cat([generated_sample[:number_img,:1,:,:]],
                     0).view(-1, 1, data_shape[1], data_shape[2])
@@ -330,3 +334,93 @@ def save_2D_manifold(args, model, data_shape):
     plt.show()
 
 
+def scatter(args, x, colors):
+    # choose a color palette with seaborn.
+    num_classes = len(np.unique(colors))
+    palette = np.array(sns.color_palette("hls", num_classes))
+
+    # create a scatter plot.
+    f = plt.figure(figsize=(8, 8))
+    ax = plt.subplot(aspect='equal')
+    sc = ax.scatter(x[:,0], x[:,1], lw=0, s=40, c=palette[colors.astype(np.int)])
+    plt.xlim(-25, 25)
+    plt.ylim(-25, 25)
+    ax.axis('off')
+    ax.axis('tight')
+
+    # add the labels for each digit corresponding to the label
+    txts = []
+
+    for i in range(num_classes):
+
+        # Position of each label at median of data points.
+
+        xtext, ytext = np.median(x[colors == i, :], axis=0)
+        txt = ax.text(xtext, ytext, str(i), fontsize=24)
+        txt.set_path_effects([
+            PathEffects.Stroke(linewidth=5, foreground="w"),
+            PathEffects.Normal()])
+        txts.append(txt)
+
+    plt.colorbar()
+
+    date_string = time.strftime("%Y-%m-%d-%H:%M")
+    name = args.save + '/t_sne' + args.experiment_name + '_' + date_string + '.png'
+    plt.savefig(name)
+    plt.close()
+
+    #  return f, ax, sc, txts
+
+
+def tsne(args, model, data_shape, logger):
+    number_img = 1000
+
+    with torch.no_grad():
+
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+        cvt = lambda x: x.type(torch.float32).to(device, non_blocking=True)
+
+        if args.model == "ffjord":
+            fixed_z = cvt(torch.randn(number_img, *data_shape))
+            generated_sample = model(fixed_z, reverse=True)
+
+        elif args.model == "snf":
+            fixed_z = cvt(torch.randn(number_img, args.z_size))
+            generated_sample = model.decode(fixed_z)
+
+        date_string = time.strftime("%Y-%m-%d-%H:%M")
+
+        if args.data == "mnist":
+            fixed_z = fixed_z.cpu()
+            generated_sample = generated_sample.cpu()
+            #  import pdb; pdb.set_trace()
+
+            fixed_z = fixed_z.view(number_img, -1).numpy()
+
+            generated_sample = np.round(np.subtract(generated_sample.numpy()[:,1,0,0], 0.05),1)
+            generated_sample = np.multiply(generated_sample,10)
+
+
+            tsne = TSNE(random_state=123).fit_transform(fixed_z)
+
+
+            scatter(args, tsne, generated_sample)
+
+
+#  def tsne(x, z):
+    #  z = z.cpu()
+    #  x = x.cpu()
+    #
+    #  fixed_z = z.detach().numpy()
+    #
+    #  y = x.numpy()[:,1,0,0]
+    #  y = np.multiply(y,10)
+    #
+    #  #  import pdb; pdb.set_trace()
+    #
+    #  tsne = TSNE(random_state=123).fit_transform(fixed_z)
+    #
+    #
+    #  scatter(tsne, y)
+#

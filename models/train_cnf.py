@@ -40,6 +40,8 @@ def compute_bits_per_dim(x, model):
 
     z, delta_logp = model(x, zero)  # run model forward
 
+    #  evaluation.tsne(x,z)
+
     logpz = standard_normal_logprob(z).view(z.shape[0], -1).sum(1, keepdim=True)  # logp(z)
     logpx = logpz - delta_logp
 
@@ -161,17 +163,7 @@ def extract(data, args):
                 labels.fill_((y_[idx].item()/10))
 
                 x[idx, 1,:,:] = labels
-
-    elif args.data == 'cifar10' and args.heterogen:
-            x_,y_ = data
-
-            x = torch.zeros([x_.size(0), 4, 32, 32])
-            x[:,:3,:,:] = x_
-            for idx in range(x_.size(0)):
-                labels = torch.zeros([1,32,32])
-                labels.fill_(y_[idx].item()/10)
-
-                x[idx, 3,:,:] = labels
+            import pdb; pdb.set_trace()
 
     else:
         x, y = data
@@ -180,6 +172,13 @@ def extract(data, args):
         return x
     else:
         return x, y
+
+def write_bits_dim(epoch, loss_meter, time_meter, steps_meter)
+    with open(args.save +'/' + args.experiment_name + 'bits_dim.csv',
+                    mode='a') as loss_file:
+        loss_file_writer = csv.writer(loss_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+        row = [epoch, loss_meter, time_meter, steps_meter]
+        loss_file_writer.writerow(row)
 
 
 def run(args, logger, train_loader, validation_loader, data_shape):
@@ -233,8 +232,8 @@ def run(args, logger, train_loader, validation_loader, data_shape):
     best_loss = float("inf")
 
     itr = 0
-    train_loader_break = 1000000
-    validation_loader_break = 5000
+    train_loader_break = 10
+    validation_loader_break = 50
     break_train = int(train_loader_break/args.batch_size)
     break_validation = int(validation_loader_break/args.batch_size)
 
@@ -287,12 +286,7 @@ def run(args, logger, train_loader, validation_loader, data_shape):
             tt_meter.update(total_time)
 
             if itr % args.log_freq == 0:
-                with open(args.save +'/' + args.experiment_name + 'bits_dim.csv',
-                                mode='a') as loss_file:
-                    loss_file_writer = csv.writer(loss_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-                    row = [epoch, loss_meter.val, loss_meter.avg, time_meter.val,
-                            time_meter.avg, steps_meter.val, steps_meter.avg]
-                    loss_file_writer.writerow(row)
+                #  write_bits_dim(epoch, loss_meter.avg, time_meter.avg, steps_meter.avg)
 
                 log_message = (
                     "Iter {:04d} | Time {:.4f}({:.4f}) | Bit/dim {:.4f}({:.4f}) | "
@@ -341,16 +335,16 @@ def run(args, logger, train_loader, validation_loader, data_shape):
                         loss = compute_bits_per_dim(x, model)
                         losses.append(loss.item())
 
-                        if args.data == "piv" and args.heterogen == False:
-                            loss_vec_recon_images, loss_vec_images_recon_images = resnet_pretrained.run(args, logger,
-                                    recon_images, x, y, data_shape)
-                            losses_vec_recon_images.append(loss_vec_recon_images.item())
-                            losses_vec_images_recon_images.append(loss_vec_images_recon_images.item())
-
-
-                    if args.data == "piv" and args.heterogen == False:
-                        logger.info("Loss vector reconstructed images {}, Loss vector images reconstructed images {}".format(np.mean(losses_vec_recon_images),
-                                    np.mean(losses_vec_images_recon_images)))
+                    #      if args.data == "piv" and args.heterogen == False:
+                    #          loss_vec_recon_images, loss_vec_images_recon_images = resnet_pretrained.run(args, logger,
+                    #                  recon_images, x, y, data_shape)
+                    #          losses_vec_recon_images.append(loss_vec_recon_images.item())
+                    #          losses_vec_images_recon_images.append(loss_vec_images_recon_images.item())
+                    #
+                    #
+                    #  if args.data == "piv" and args.heterogen == False:
+                    #      logger.info("Loss vector reconstructed images {}, Loss vector images reconstructed images {}".format(np.mean(losses_vec_recon_images),
+                                    #  np.mean(losses_vec_images_recon_images)))
 
                     loss = np.mean(losses)
                     logger.info("Epoch {:04d} | Time {:.4f}, Bit/dim {:.4f}".format(epoch, time.time() - start, loss))
@@ -368,4 +362,6 @@ def run(args, logger, train_loader, validation_loader, data_shape):
             evaluation.save_recon_images(args, model, validation_loader,
                     data_shape, logger)
             evaluation.save_fixed_z_image(args, model, data_shape, logger)
+
+            evaluation.tsne(args, model, data_shape, logger)
 
