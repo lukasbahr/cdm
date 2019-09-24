@@ -238,7 +238,6 @@ def save_fixed_z_image(args, model, data_shape, logger):
         if not args.conv:
             generated_sample = generated_sample.view([generated_sample.shape[0], 2, 28, 28])
 
-
         if args.data == "piv":
 
             if args.heterogen:
@@ -342,7 +341,9 @@ def scatter(args, x, colors):
     # create a scatter plot.
     f = plt.figure(figsize=(8, 8))
     ax = plt.subplot(aspect='equal')
-    sc = ax.scatter(x[:,0], x[:,1], lw=0, s=40, c=palette[colors.astype(np.int)])
+    sc = ax.scatter(x[:,0], x[:,1], lw=0, s=40,
+            c=colors, cmap='brg')
+    f.colorbar(sc, ax=ax)
     plt.xlim(-25, 25)
     plt.ylim(-25, 25)
     ax.axis('off')
@@ -362,65 +363,84 @@ def scatter(args, x, colors):
             PathEffects.Normal()])
         txts.append(txt)
 
-    plt.colorbar()
 
     date_string = time.strftime("%Y-%m-%d-%H:%M")
     name = args.save + '/t_sne' + args.experiment_name + '_' + date_string + '.png'
     plt.savefig(name)
     plt.close()
 
-    #  return f, ax, sc, txts
 
+#  def tsne(args, model, data_shape, logger):
+    #  number_img = 1000
+    #
+    #  with torch.no_grad():
+    #
+    #      device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    #
+    #      cvt = lambda x: x.type(torch.float32).to(device, non_blocking=True)
+    #
+    #      if args.model == "ffjord":
+    #          fixed_z = cvt(torch.randn(number_img, *data_shape))
+    #          generated_sample = model(fixed_z, reverse=True)
+    #
+    #      elif args.model == "snf":
+    #          fixed_z = cvt(torch.randn(number_img, args.z_size))
+    #          generated_sample = model.decode(fixed_z)
+    #
+    #      date_string = time.strftime("%Y-%m-%d-%H:%M")
+    #
+    #      if args.data == "mnist":
+    #          fixed_z = fixed_z.cpu()
+    #          generated_sample = generated_sample.cpu()
+    #
+    #          fixed_z = fixed_z.view(number_img, -1).numpy()
+    #
+    #          generated_sample = np.round(generated_sample.numpy()[:,1,0,0],1)
+    #          generated_sample = np.multiply(generated_sample,10)
+    #
+    #
+    #          tsne = TSNE(random_state=123).fit_transform(fixed_z)
+    #
+    #
+    #          scatter(args, tsne, generated_sample)
+#
 
-def tsne(args, model, data_shape, logger):
-    number_img = 1000
+def tsne_x(args, model, validation_loader, data_shape, logger):
 
     with torch.no_grad():
-
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-        cvt = lambda x: x.type(torch.float32).to(device, non_blocking=True)
+        validation_set_enumerate = enumerate(validation_loader)
+
+        _, data = next(validation_set_enumerate)
+
+
+        if args.heterogen:
+            x = extract(data, args)
+        else:
+            x, y = extract(data, args)
+
+        x = x.to(device)
 
         if args.model == "ffjord":
-            fixed_z = cvt(torch.randn(number_img, *data_shape))
-            generated_sample = model(fixed_z, reverse=True)
+            zero = torch.zeros(x.shape[0], 1).to(x)
+            z, delta_logp = model(x, zero)  # run model forward
 
-        elif args.model == "snf":
-            fixed_z = cvt(torch.randn(number_img, args.z_size))
-            generated_sample = model.decode(fixed_z)
+    z = z.cpu()
 
-        date_string = time.strftime("%Y-%m-%d-%H:%M")
+    if args.heterogen:
+        x = x.cpu()
 
-        if args.data == "mnist":
-            fixed_z = fixed_z.cpu()
-            generated_sample = generated_sample.cpu()
-            #  import pdb; pdb.set_trace()
+        fixed_z = z.numpy()
 
-            fixed_z = fixed_z.view(number_img, -1).numpy()
-
-            generated_sample = np.round(np.subtract(generated_sample.numpy()[:,1,0,0], 0.05),1)
-            generated_sample = np.multiply(generated_sample,10)
+        y = x.numpy()[:,1,0,0]
+        y = np.multiply(y,10)
+    else:
+        y = y.cpu()
 
 
-            tsne = TSNE(random_state=123).fit_transform(fixed_z)
+    tsne = TSNE(random_state=123).fit_transform(fixed_z)
 
 
-            scatter(args, tsne, generated_sample)
+    scatter(args, tsne, y)
 
-
-#  def tsne(x, z):
-    #  z = z.cpu()
-    #  x = x.cpu()
-    #
-    #  fixed_z = z.detach().numpy()
-    #
-    #  y = x.numpy()[:,1,0,0]
-    #  y = np.multiply(y,10)
-    #
-    #  #  import pdb; pdb.set_trace()
-    #
-    #  tsne = TSNE(random_state=123).fit_transform(fixed_z)
-    #
-    #
-    #  scatter(tsne, y)
-#

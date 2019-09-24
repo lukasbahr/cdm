@@ -40,7 +40,6 @@ def compute_bits_per_dim(x, model):
 
     z, delta_logp = model(x, zero)  # run model forward
 
-    #  evaluation.tsne(x,z)
 
     logpz = standard_normal_logprob(z).view(z.shape[0], -1).sum(1, keepdim=True)  # logp(z)
     logpx = logpz - delta_logp
@@ -163,7 +162,6 @@ def extract(data, args):
                 labels.fill_((y_[idx].item()/10))
 
                 x[idx, 1,:,:] = labels
-            import pdb; pdb.set_trace()
 
     else:
         x, y = data
@@ -173,7 +171,7 @@ def extract(data, args):
     else:
         return x, y
 
-def write_bits_dim(epoch, loss_meter, time_meter, steps_meter)
+def write_bits_dim(args, epoch, loss_meter, time_meter, steps_meter):
     with open(args.save +'/' + args.experiment_name + 'bits_dim.csv',
                     mode='a') as loss_file:
         loss_file_writer = csv.writer(loss_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
@@ -232,8 +230,8 @@ def run(args, logger, train_loader, validation_loader, data_shape):
     best_loss = float("inf")
 
     itr = 0
-    train_loader_break = 10
-    validation_loader_break = 50
+    train_loader_break = 10000
+    validation_loader_break = 5000
     break_train = int(train_loader_break/args.batch_size)
     break_validation = int(validation_loader_break/args.batch_size)
 
@@ -245,7 +243,7 @@ def run(args, logger, train_loader, validation_loader, data_shape):
         for idx_count, (data) in enumerate(train_loader):
             if idx_count > break_train:
                 break
-
+#
             if args.heterogen:
                 x = extract(data, args)
             else:
@@ -286,7 +284,7 @@ def run(args, logger, train_loader, validation_loader, data_shape):
             tt_meter.update(total_time)
 
             if itr % args.log_freq == 0:
-                #  write_bits_dim(epoch, loss_meter.avg, time_meter.avg, steps_meter.avg)
+                write_bits_dim(args, epoch, loss_meter.avg, time_meter.avg, steps_meter.avg)
 
                 log_message = (
                     "Iter {:04d} | Time {:.4f}({:.4f}) | Bit/dim {:.4f}({:.4f}) | "
@@ -316,7 +314,7 @@ def run(args, logger, train_loader, validation_loader, data_shape):
                     for _,(data) in enumerate(validation_loader):
                         if  _ > break_validation:
                             break
-
+#
                         if args.heterogen:
                             x = extract(data, args)
                         else:
@@ -361,7 +359,12 @@ def run(args, logger, train_loader, validation_loader, data_shape):
             # visualize samples and density
             evaluation.save_recon_images(args, model, validation_loader,
                     data_shape, logger)
+
             evaluation.save_fixed_z_image(args, model, data_shape, logger)
 
-            evaluation.tsne(args, model, data_shape, logger)
+            #  evaluation.tsne(args, model, data_shape, logger)
+
+            if args.data == "piv":
+                evaluation.tsne_x(args, model, validation_loader, data_shape, logger)
+
 

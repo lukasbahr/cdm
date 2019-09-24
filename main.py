@@ -26,9 +26,9 @@ parser.add_argument("--data", choices=["piv","mnist", "cifar10"], type=str, defa
 parser.add_argument("--resume", type=str, default=None)
 
 parser.add_argument("--num_epochs", type=int, default=1000)
-parser.add_argument("--batch_size", type=int, default=128) # Try 32, 64, 128, 256
+parser.add_argument("--batch_size", type=int, default=200)
 parser.add_argument("--batch_size_schedule", type=str, default="", help="Increases the batchsize at every given epoch, dash separated.")
-parser.add_argument("--test_batch_size", type=int, default=200)
+parser.add_argument("--test_batch_size", type=int, default=600)
 parser.add_argument("--lr", type=float, default=1e-3)
 parser.add_argument("--heterogen", type=eval, default=False, choices=[True, False])
 
